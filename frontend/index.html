@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeNote — AI Meeting Analytics Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-waveform-lines"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>VibeNote</h1>
+                    <span class="tagline">Real-Time Meeting Sentiment & Analysis</span>
+                </div>
+            </div>
+            
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot disconnected"></span>
+                <span class="status-text">Disconnected</span>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Left Panel: Controls & Transcript -->
+            <section class="panel left-panel col-span-7">
+                <!-- Session Setup Card -->
+                <div class="card glass-card control-card">
+                    <h2 class="section-title"><i class="fa-solid fa-sliders"></i> Session Settings</h2>
+                    
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label for="meetingUrl">Meeting URL</label>
+                            <div class="input-wrapper">
+                                <i class="fa-solid fa-link input-icon"></i>
+                                <input type="url" id="meetingUrl" placeholder="https://meet.google.com/abc-defg-hij" value="https://meet.google.com/vibe-note-demo">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group flex-1">
+                            <label for="industrySelect">Industry Vertical</label>
+                            <div class="select-wrapper">
+                                <i class="fa-solid fa-briefcase input-icon"></i>
+                                <select id="industrySelect">
+                                    <option value="manufacturing">Manufacturing</option>
+                                    <option value="construction">Construction</option>
+                                    <option value="financial services">Financial Services</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-row">
+                        <button id="startLiveBtn" class="btn btn-primary">
+                            <i class="fa-solid fa-microphone"></i> Start Live Session
+                        </button>
+                        
+                        <div class="divider">or</div>
+                        
+                        <div class="upload-wrapper">
+                            <input type="file" id="audioUpload" accept="audio/*" class="file-input-hidden">
+                            <button id="uploadTriggerBtn" class="btn btn-secondary">
+                                <i class="fa-solid fa-cloud-arrow-up"></i> Upload Recording
+                            </button>
+                            <span id="fileNameDisplay" class="file-name-text">No file chosen</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transcript Feed Card -->
+                <div class="card glass-card transcript-card flex-grow">
+                    <div class="card-header">
+                        <h2 class="section-title"><i class="fa-solid fa-message-captions"></i> Live Transcript</h2>
+                        <span class="live-indicator-pill hidden" id="liveIndicator">
+                            <span class="pulse-dot"></span> LIVE
+                        </span>
+                    </div>
+                    <div class="transcript-feed" id="transcriptFeed">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fa-solid fa-microphone-lines-slash"></i></div>
+                            <p>No active recording. Start a live session or upload an audio file to begin transcribing.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Analytics & Summaries -->
+            <section class="panel right-panel col-span-5">
+                <!-- Emotions & Topics Row -->
+                <div class="analytics-row-grid">
+                    <!-- Emotion Chart Card -->
+                    <div class="card glass-card emotion-card">
+                        <h2 class="section-title"><i class="fa-solid fa-chart-pie"></i> Emotion Spectrum</h2>
+                        <div class="chart-container">
+                            <canvas id="emotionChartCanvas"></canvas>
+                            <div class="chart-empty-state" id="chartEmptyState">
+                                <i class="fa-solid fa-face-smile-beam"></i>
+                                <span>Awaiting stream...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Topic Cloud Card -->
+                    <div class="card glass-card topic-card">
+                        <h2 class="section-title"><i class="fa-solid fa-cloud"></i> Topic Insights</h2>
+                        <div class="topic-cloud-container" id="topicCloud">
+                            <div class="topic-empty-state" id="topicEmptyState">
+                                <i class="fa-solid fa-tags"></i>
+                                <span>No topics identified yet.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Executive Summary Report Card -->
+                <div class="card glass-card summary-card flex-grow">
+                    <h2 class="section-title"><i class="fa-solid fa-file-invoice"></i> Executive Summary Report</h2>
+                    <div class="summary-report-container" id="summaryReport">
+                        <div class="summary-empty-state" id="summaryEmptyState">
+                            <div class="empty-icon"><i class="fa-solid fa-paste"></i></div>
+                            <p>The executive report will generate once the live meeting is ended or a recording is uploaded.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="app.js"></script>
+</body>
+</html>

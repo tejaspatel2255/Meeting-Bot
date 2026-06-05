@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "VibeNote Web Capturer",
+  "version": "1.0.0",
+  "description": "Capture system or tab audio from online meetings and stream them directly to the VibeNote dashboard.",
+  "permissions": [
+    "tabCapture",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

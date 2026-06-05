@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend:
+    image: python:3.11-slim
+    container_name: vibenote-backend
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - DEBUG=True
+      - UPLOAD_FOLDER=/app/uploads
+    # We install libsndfile1 for soundfile dependency and run pip install
+    command: >
+      sh -c "apt-get update && 
+             apt-get install -y libsndfile1 ffmpeg && 
+             pip install --no-cache-dir -r requirements.txt && 
+             python app.py"
+    restart: unless-stopped
