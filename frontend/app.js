@@ -75,6 +75,11 @@ function setupSocketListeners() {
     socket.on('live_emotions', (emotions) => {
         updateEmotionChart(emotions);
     });
+
+    // Final Report Compiled Event (for background file uploads)
+    socket.on('final_report', (data) => {
+        displayFinalReport(data);
+    });
 }
 
 // Setup Interactive Click & Upload Handlers
@@ -241,7 +246,7 @@ async function startLiveAudioStream() {
         });
         const data = await response.json();
         
-        if (data.status !== 'success') {
+        if (data.status !== 'success' && data.status !== 'ready') {
             throw new Error(data.message || 'Failed to initialize session');
         }
         
@@ -356,6 +361,8 @@ async function handleFileUpload(file) {
         
         if (data.status === 'success') {
             displayFinalReport(data);
+        } else if (data.status === 'processing') {
+            console.log("File is being processed in the background. Results will stream via WebSocket.");
         } else {
             alert("Error: " + data.message);
         }
@@ -508,7 +515,7 @@ window.addEventListener('message', async (event) => {
             });
             const resData = await response.json();
             
-            if (resData.status === 'success') {
+            if (resData.status === 'success' || resData.status === 'ready') {
                 activeSessionId = resData.session_id;
                 
                 // Connect/Join SocketIO room
