@@ -5,19 +5,23 @@ services:
     image: python:3.11-slim
     container_name: vibenote-backend
     working_dir: /app
+    shm_size: '2gb'
     volumes:
       - ./backend:/app
       - ./frontend:/frontend
     ports:
       - "5000:5000"
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       - PORT=5000
       - DEBUG=True
+      - DISPLAY=:99
+      - PULSE_SERVER=unix:/run/pulse/native
     command: >
       sh -c "apt-get update && 
-             apt-get install -y libsndfile1 ffmpeg && 
+             apt-get install -y libsndfile1 ffmpeg xvfb pulseaudio && 
              pip install --no-cache-dir -r requirements.txt && 
+             playwright install chromium --with-deps && 
              python run.py"
     restart: unless-stopped

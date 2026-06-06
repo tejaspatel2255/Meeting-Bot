@@ -13,3 +13,5 @@ torchaudio
 numpy>=1.20.0
 scipy>=1.10.0
 soundfile>=0.12.0
+playwright==1.44.0
+pyee

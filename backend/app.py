@@ -15,6 +15,7 @@ from transcriber import transcribe_chunk, transcribe_file, assign_speakers
 from speaker import diarize
 import gemini_client
 import knowledge_base
+from bot import bot_launcher
 
 # Create Flask app and configure SocketIO
 app = Flask(__name__)
@@ -325,6 +326,11 @@ def api_join():
     
     print(f"Session Joined: {meeting_id} | Platform: {platform} | Industry: {industry}", flush=True)
     
+    # Launch the headless meeting bot in the background
+    bot_platform = bot_launcher.launch_bot(url, meeting_id, industry, socketio)
+    if bot_platform:
+        platform = bot_platform
+        
     # Returns {status: "ready", meeting_id, platform} (with backward compatibility key session_id)
     return jsonify({
         "status": "ready",
@@ -403,6 +409,9 @@ def api_end():
     meeting_state["active"] = False
     industry = meeting_state["industry"]
     
+    # Stop the headless meeting bot
+    bot_launcher.stop_bot(session_id)
+    
     # If transcript is completely empty, default to mock data so the dashboard doesn't display blank
     if not meeting_state["transcript"]:
         normalized_ind = industry.lower().replace(" ", "_")
@@ -457,6 +466,16 @@ def api_state():
     Returns the current meeting_state (useful for dashboard reconnection)
     """
     return jsonify(meeting_state)
+
+
+@app.route('/api/bot/status/<meeting_id>', methods=['GET'])
+def api_bot_status(meeting_id):
+    """
+    GET /api/bot/status/<meeting_id>
+    Returns the current state and status logs of the headless meeting bot.
+    """
+    status_info = bot_launcher.get_bot_status_info(meeting_id)
+    return jsonify(status_info)
 
 
 # WebSockets Handlers

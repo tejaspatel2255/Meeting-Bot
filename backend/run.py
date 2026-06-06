@@ -58,6 +58,15 @@ def run_checklist():
     print("="*50 + "\n")
 
 if __name__ == "__main__":
+    # Auto-initialize Xvfb on container startup if Linux
+    if os.name != 'nt':
+        try:
+            print("Auto-starting Xvfb on container startup...", flush=True)
+            from bot.xvfb_manager import start_xvfb
+            start_xvfb()
+        except Exception as e:
+            print(f"Warning: Failed to auto-start Xvfb on boot: {e}", flush=True)
+
     run_checklist()
     print("Starting Flask-SocketIO application...")
     socketio.run(app, host='0.0.0.0', port=Config.PORT, debug=Config.DEBUG)

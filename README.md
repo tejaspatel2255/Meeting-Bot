@@ -1,104 +1,126 @@
 # VibeNote — Real-Time Sentiment & AI Meeting Analytics
 
-VibeNote is a real-time meeting analysis platform. It captures conversation audio (via Chrome Extension tab audio capture or file uploads), transcribes it, extracts key topics, performs emotional tone tracking, and generates polished executive summary reports tailored to specific industry verticals (Manufacturing, Construction, and Financial Services).
+VibeNote is a real-time meeting analysis platform. It captures conversation audio (via direct microphone streaming, Chrome Extension tab audio capture, batch file uploads, or **headless meeting bots**), transcribes it, extracts key topics, performs emotional tone tracking, and generates polished executive summary reports tailored to specific industry verticals (Manufacturing, Construction, and Financial Services).
 
 ---
 
-## 🚀 Setup in 5 Steps
+## 📂 Project Structure
 
-Follow these five steps to get the complete VibeNote pipeline running on your machine:
-
-### 1. Clone the Repository
-Clone the codebase to your local machine:
-```bash
-git clone https://github.com/tejaspatel2255/Meeting-Bot.git
-cd Meeting-Bot
+```text
+vibenote/
+├── backend/
+│   ├── app.py                # Flask app with Flask-SocketIO & CORS
+│   ├── config.py             # Configuration system loading env variables
+│   ├── requirements.txt      # Python dependencies (Whisper, Playwright, CPU PyTorch)
+│   ├── run.py                # Unified app entry point and configuration checklist
+│   ├── test_pipeline.py      # automated pipeline test suite
+│   ├── bot/                  # Autonomous Headless Meeting Bot (Phase 9)
+│   │   ├── base_bot.py       # Abstract Base Bot class with SocketIO emitters
+│   │   ├── bot_launcher.py   # Threaded background bot manager
+│   │   ├── meet_bot.py       # Playwright Google Meet bot
+│   │   ├── zoom_bot.py       # Playwright Zoom web client bot
+│   │   ├── teams_bot.py      # Playwright Teams web client bot
+│   │   └── xvfb_manager.py   # Xvfb headless display buffer manager for Linux
+│   └── .env.example          # Environment variables template
+├── frontend/
+│   ├── index.html            # Neon-dark styled glassmorphic dashboard UI
+│   ├── app.js                # SocketIO client, MediaRecorder pipelines, & Chart.js
+│   └── styles.css            # Dark theme, layout grids, and animations
+├── extension/
+│   ├── manifest.json         # Chrome Extension Manifest V3 config
+│   ├── content.js            # Message relay bridge in the browser tab context
+│   ├── background.js         # Service Worker & Popup Controller
+│   └── popup.html            # Extension popup capture control UI
+├── docker-compose.yml        # Docker service definition with XVFB and Playwright support
+└── README.md                 # Project setup and usage instructions
 ```
 
-### 2. Create the `.env` Configuration File
-Create a `.env` file in the root directory and add your API keys:
+---
+
+## 🛠️ Tech Stack & Design
+
+- **Backend**: Python 3.11/3.13, Flask, Flask-SocketIO (backed by `eventlet` for real-time WebSocket communication), Flask-CORS.
+- **Audio & AI Processing**:
+  - **Whisper**: Local OpenAI Whisper (`tiny` or `base` model on CPU) for high-performance offline transcription.
+  - **LLM Integrations**: Google Gemini (`gemini-1.5-flash`) or Groq (`llama-3.1-8b-instant`) for extracting emotional spectrums and structuring markdown reports.
+  - **Graceful Fallbacks**: Automatically fails over to Groq if Gemini hits quota limits, and uses a deterministic local knowledge base for industry-specific jargon scanning.
+- **Headless Meeting Bot**: Playwright-based background bots that automatically join calls (Google Meet, Zoom, Teams), bypass user prompts, intercept WebRTC AudioContext streams, mix incoming channels, and stream audio chunks to the server.
+- **Frontend**: Pure HTML5, CSS Grid/Flexbox, Chart.js (for the Sentiment Timeline), Socket.IO Client.
+
+---
+
+## 🚀 Setup & Execution
+
+### 1. Configure Secrets (`.env`)
+Create a `.env` file inside `backend/` (`backend/.env`) with your API keys:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
 HF_TOKEN=your_hugging_face_token_here
+
+# Bot configuration
+DISPLAY=:99
+BOT_NAME=VibeNote Bot
 ```
-> [!NOTE]
-> - **Gemini API Key**: Obtain from Google AI Studio.
-> - **Groq API Key**: Obtain from Groq Console.
-> - **HF Token**: Create a Read token on Hugging Face (Required for Pyannote speaker diarization). Ensure you accept terms for `pyannote/speaker-diarization-3.1` and `pyannote/segmentation-3.0`.
+> [!IMPORTANT]
+> The Hugging Face Token (`HF_TOKEN`) is required for the Pyannote speaker diarization models. Make sure you accept the repository terms at [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1).
 
-### 3. Install Python Dependencies
-Create a virtual environment and install dependencies:
-```bash
-# Navigate to the backend directory
-cd backend
+---
 
-# Create and activate virtual environment
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
+### Option A: Run via Docker Compose (Recommended for Bot support)
+The Docker Compose environment comes pre-configured with Xvfb (Virtual Framebuffer) and Pulseaudio required to render headless browser audio streams on Linux:
 
-# Install required packages
-pip install -r requirements.txt
-```
-*(Make sure `ffmpeg` is installed on your system and is accessible in your system PATH environment variable).*
+1. Build and run the containers:
+   ```bash
+   docker-compose up --build
+   ```
+2. Open `frontend/index.html` directly in Google Chrome.
+3. Submit a meeting URL (e.g. Google Meet, Zoom Web Client, or Teams link) and select your industry vertical. The backend will spin up the virtual bot in the background to join, record, and analyze your meeting.
 
-### 4. Start the Server
-Run the single entry point script to boot the backend:
-```bash
-python run.py
-```
-This loads your `.env`, runs a quick configuration checklist, and runs the Socket.IO server on `http://localhost:5000`.
+---
 
-### 5. Install the Chrome Extension
-Load the extension in your browser:
+### Option B: Local Setup (Windows / macOS)
+
+1. **Install Python dependencies**:
+   ```bash
+   cd backend
+   python -m venv venv
+   # On Windows:
+   .\venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   
+   pip install -r requirements.txt
+   playwright install chromium
+   ```
+2. **Start the backend server**:
+   ```bash
+   python run.py
+   ```
+3. **Open the Dashboard**:
+   Open `frontend/index.html` in your browser.
+
+---
+
+## 🔌 Installing the Chrome Extension
+If you prefer to stream audio directly from your active browser tab instead of using the headless bot:
 1. Open Google Chrome and go to `chrome://extensions/`.
-2. Toggle **"Developer mode"** ON in the top-right corner.
-3. Click **"Load unpacked"** in the top-left corner and select the `extension/` folder in the project root.
-4. Open `frontend/index.html` directly in your browser.
+2. Toggle **Developer mode** ON (top-right corner).
+3. Click **Load unpacked** (top-left) and select the `extension/` directory.
+4. Input the server URL `http://localhost:5000` in the extension popup and click **Capture Tab Audio**.
 
 ---
 
-## 📖 How to Use
+## 🔒 Safety & Git Push
 
-VibeNote operates in two modes:
+The `.gitignore` is pre-configured to ensure no secrets or API keys are ever committed to your repository:
+- It ignores all virtual environments (`venv/`, `env/`).
+- It ignores `.env` files and developer configurations (`.env`, `.env.*`).
+- It excludes Playwright browser caches and build directories.
 
-### Mode A: Live Tab Capture (Real-Time)
-Stream meetings directly from browser tabs (Google Meet, Zoom, Teams):
-1. Input your target meeting URL and select the Industry vertical in the dashboard.
-2. Click **Start Live Session**.
-3. Open your meeting tab, click the VibeNote extension icon in the Chrome toolbar, and click **Start Capturing** (allow tab capture permission).
-4. The extension captures and streams 1-second audio chunks to the backend, which feeds real-time transcript lines, sentiment indexes, and topics to the dashboard.
-5. Click **Stop Capturing** in the extension popup to stop the stream, and click **End Meeting** on the dashboard to trigger the final executive report.
-
-### Mode B: Batch File Upload (Asynchronous)
-Analyze pre-recorded meeting audio files:
-1. Select the Industry vertical on the dashboard.
-2. Click **Upload Recording** and choose your audio file (`.wav`, `.mp3`, `.m4a`, etc.).
-3. The dashboard will show a loading progress bar.
-4. The backend processes the audio on a background thread (`transcribe_file` → `diarize` → `assign_speakers`), runs analysis, and streams the updates to the dashboard as they compile.
-5. Once complete, the final compiled summary report displays at the bottom automatically.
-
----
-
-## 📊 API & Free Tier Limits
-
-- **Google Gemini API**:
-  - **Free Tier limits**: 15 requests per minute (RPM) and 1,500 requests per day (RPD) on the `gemini-2.5-flash` model.
-- **Groq API**:
-  - **Free Tier limits**: 14,400 requests per day (RPD) on the `llama-3.1-8b-instant` model.
-- **Hugging Face / Pyannote**:
-  - Diarization pipelines are free but require gating approval and token authentication (`HF_TOKEN`).
-
----
-
-## 🛠️ Troubleshooting
-
-- **Whisper Transcription is Too Slow**:
-  - If processing takes too long, configure `transcriber.py` to use the `tiny` or `base` model instead of `small` (e.g. `whisper.load_model("tiny", device="cpu")`).
-- **Gemini Rate Limit Exceeded**:
-  - VibeNote has built-in primary/secondary failover. If Gemini hits quota limits, the Groq API (`llama-3.1-8b-instant`) takes over automatically to process transcription lines and summaries.
-- **No Audio Captured (Silent feed)**:
-  - Ensure you click the **"Share tab audio"** checkbox in the Chrome tab capture sharing permission dialog when activating the extension.
+You can safely push your code to GitHub:
+```bash
+git add .
+git commit -m "Add headless meeting bot integration for Zoom, Meet, and Teams"
+git push origin main
+```
