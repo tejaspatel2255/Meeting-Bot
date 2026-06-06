@@ -139,15 +139,31 @@ def analyze_line(text: str, speaker: str, industry: str) -> dict:
     try:
         response_text = call_llm(prompt)
         parsed = clean_and_parse_json(response_text)
-        
-        # Ensure all required keys exist
-        for key in ["emotion", "emotion_confidence", "jargon_terms", "insight"]:
-            if key not in parsed:
-                parsed[key] = default_response[key]
-        return parsed
     except Exception as e:
-        print(f"Error in analyze_line: {e}. Returning safe default.", file=sys.stderr, flush=True)
-        return default_response
+        print(f"LLM call in analyze_line failed: {e}. Using safe default.", file=sys.stderr, flush=True)
+        parsed = default_response.copy()
+        
+    # Ensure all required keys exist
+    for key in ["emotion", "emotion_confidence", "jargon_terms", "insight"]:
+        if key not in parsed:
+            parsed[key] = default_response[key]
+
+    # Integrate local jargon database scanner as fallback/enhancement
+    try:
+        from knowledge_base import scan_for_jargon
+        local_jargon = scan_for_jargon(text, industry)
+        
+        existing_terms = {t["term"].upper() for t in parsed.get("jargon_terms", []) if isinstance(t, dict) and "term" in t}
+        for item in local_jargon:
+            if item["term"].upper() not in existing_terms:
+                parsed["jargon_terms"].append({
+                    "term": item["term"],
+                    "plain_english": f"{item['full_form']}: {item['plain_english']}"
+                })
+    except Exception as je:
+        print(f"Error merging local jargon: {je}", file=sys.stderr, flush=True)
+
+    return parsed
 
 
 def extract_topics(transcript_so_far: str) -> list[str]:
