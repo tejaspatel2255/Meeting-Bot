@@ -80,15 +80,15 @@ def call_llm(prompt: str) -> str:
     groq_cli = get_groq_client()
     if groq_cli:
         try:
-            print("[LLM Call] Invoking Groq (llama3-8b-8192) as primary model...", flush=True)
+            print("[LLM Call] Invoking Groq (llama-3.1-8b-instant) as primary model...", flush=True)
             chat_completion = groq_cli.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama3-8b-8192",
+                model="llama-3.1-8b-instant",
                 temperature=0.1
             )
             if chat_completion.choices and chat_completion.choices[0].message.content:
                 response_text = chat_completion.choices[0].message.content.strip()
-                print("[LLM Call] Success: Groq (llama3-8b-8192) processed the request.", flush=True)
+                print("[LLM Call] Success: Groq (llama-3.1-8b-instant) processed the request.", flush=True)
                 return response_text
         except Exception as e:
             print(f"[LLM Call] Groq primary call failed: {e}. Attempting fallback to Gemini...", file=sys.stderr, flush=True)
