@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   backend:
-    image: python:3.11-slim
+    image: python:3.11-slim-bookworm
     container_name: vibenote-backend
     working_dir: /app
     shm_size: '2gb'
