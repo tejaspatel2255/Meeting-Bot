@@ -18,8 +18,12 @@ class TeamsBot(BaseBot):
         
         self.playwright = sync_playwright().start()
         
+        # Locate system chromium inside Linux containers if available
+        exec_path = "/usr/bin/chromium" if os.path.exists("/usr/bin/chromium") else None
+        
         self.browser = self.playwright.chromium.launch(
             headless=True,
+            executable_path=exec_path,
             args=[
                 "--use-fake-ui-for-media-stream",
                 "--use-fake-device-for-media-stream",

@@ -18,10 +18,10 @@ services:
       - DEBUG=True
       - DISPLAY=:99
       - PULSE_SERVER=unix:/run/pulse/native
+      - PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     command: >
       sh -c "apt-get update && 
-             apt-get install -y libsndfile1 ffmpeg xvfb pulseaudio && 
+             apt-get install -y libsndfile1 ffmpeg xvfb pulseaudio chromium && 
              pip install --no-cache-dir -r requirements.txt && 
-             playwright install chromium --with-deps && 
              python run.py"
     restart: unless-stopped

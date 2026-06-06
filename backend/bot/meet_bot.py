@@ -1,26 +1,11 @@
 import os
 import sys
-import re
-import urllib.parse
 import numpy as np
 from playwright.sync_api import sync_playwright
 from bot.base_bot import BaseBot, float32_pcm_to_wav_bytes
 import time
 
-def parse_zoom_url(url: str) -> dict:
-    """Parses Zoom meeting ID and passcode from typical join links."""
-    # Find sequence of digits after /j/ or /wc/
-    match_id = re.search(r'/(?:j|wc)/(\d+)', url)
-    meeting_id = match_id.group(1) if match_id else ""
-    
-    # Extract passcode from pwd query parameter
-    parsed = urllib.parse.urlparse(url)
-    queries = urllib.parse.parse_qs(parsed.query)
-    password = queries.get('pwd', [''])[0]
-    
-    return {"meeting_id": meeting_id, "password": password}
-
-class ZoomBot(BaseBot):
+class GoogleMeetBot(BaseBot):
     def __init__(self, url, meeting_id, industry, socketio_instance):
         super().__init__(url, meeting_id, industry, socketio_instance)
         self.playwright = None
@@ -29,25 +14,14 @@ class ZoomBot(BaseBot):
         self.page = None
 
     def join(self):
-        parsed = parse_zoom_url(self.url)
-        zoom_id = parsed["meeting_id"]
-        zoom_pwd = parsed["password"]
-        
-        if not zoom_id:
-            raise ValueError(f"Could not parse valid Zoom Meeting ID from URL: {self.url}")
-            
-        bot_name = os.getenv("BOT_NAME", "VibeNote Bot")
-        
-        # Build the Web Client URL format
-        join_url = f"https://zoom.us/wc/{zoom_id}/join"
-        if zoom_pwd:
-            join_url += f"?pwd={zoom_pwd}"
-            
         self.playwright = sync_playwright().start()
+        
+        bot_name = os.getenv("BOT_NAME", "VibeNote Bot")
         
         # Locate system chromium inside Linux containers if available
         exec_path = "/usr/bin/chromium" if os.path.exists("/usr/bin/chromium") else None
         
+        # Launch Chromium with anti-detection and media settings
         self.browser = self.playwright.chromium.launch(
             headless=True,
             executable_path=exec_path,
@@ -71,57 +45,53 @@ class ZoomBot(BaseBot):
         self.context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         self.page = self.context.new_page()
         
-        self.log(f"Navigating to Zoom Web Client: {join_url}")
-        self.page.goto(join_url)
-        self.page.wait_for_timeout(4000)
+        self.log(f"Navigating to Meet: {self.url}")
+        self.page.goto(self.url)
+        self.page.wait_for_timeout(3000)
         
-        # Dismiss initial cookie consent overlay if it appears
         try:
-            consent_btn = self.page.locator("#onetrust-accept-btn-handler, button:has-text('Accept All')")
-            if consent_btn.is_visible():
-                consent_btn.click(timeout=2000)
+            dismiss_buttons = [
+                "button:has-text('Got it')",
+                "button:has-text('Dismiss')",
+                "[aria-label='Close']"
+            ]
+            for selector in dismiss_buttons:
+                if self.page.locator(selector).is_visible():
+                    self.page.click(selector, timeout=2000)
         except Exception:
             pass
 
-        # Handle joining name field
         try:
-            self.page.wait_for_selector("input[name='name'], input[placeholder='Your Name'], #inputname", timeout=15000)
-            self.page.fill("input[name='name'], input[placeholder='Your Name'], #inputname", bot_name)
-            self.log(f"Filled name field: {bot_name}")
+            self.page.wait_for_selector("input[type='text'], [placeholder='Your name']", timeout=15000)
+            self.page.fill("input[type='text'], [placeholder='Your name']", bot_name)
+            self.log(f"Filled name: {bot_name}")
         except Exception as e:
-            raise RuntimeError(f"Could not find Name input on Zoom Web page: {e}")
+            raise RuntimeError(f"Could not find name input field on Google Meet page: {e}")
             
-        # Fill passcode if not in URL and requested on screen
-        if self.page.locator("input[name='password'], input[placeholder='Meeting Passcode'], #inputpasscode").is_visible():
-            if zoom_pwd:
-                self.page.fill("input[name='password'], input[placeholder='Meeting Passcode'], #inputpasscode", zoom_pwd)
-                self.log("Filled on-screen passcode field.")
-            else:
-                self.log("Warning: passcode input visible but no pwd parameter was supplied.")
-                
-        # Click Join Button
         try:
-            join_btn = self.page.locator("button:has-text('Join'), button[type='submit'], .button-join")
+            join_btn = self.page.locator("button:has-text('Ask to join'), button:has-text('Join now'), [aria-label='Ask to join'], [aria-label='Join now']")
             join_btn.first.click()
             self.log("Clicked Join button.")
         except Exception as e:
-            raise RuntimeError(f"Could not find or click join button on Zoom Web: {e}")
+            raise RuntimeError(f"Could not find or click join button: {e}")
             
         self.status = "lobby"
         self.log("In lobby")
         
-        # Monitor admission to meeting
         admitted = False
         start_wait = time.time()
         while time.time() - start_wait < 30:
-            # Check for standard meeting indicators (like "Leave" button or microphone control icons)
-            if self.page.locator("button:has-text('Leave'), .foot-button__leave-btn, [aria-label='Leave meeting']").is_visible():
+            if self.page.locator("text=You can't join this call").is_visible():
+                raise RuntimeError("Access denied: You can't join this call.")
+                
+            if self.page.locator("[aria-label='Leave call'], button:has-text('Leave'), [aria-label='More options']").is_visible():
                 admitted = True
                 break
+                
             self.page.wait_for_timeout(1000)
             
         if not admitted:
-            self.log("Warning: Not admitted within 30 seconds. Listen loop beginning.")
+            self.log("Warning: Not admitted within 30 seconds. Proceeding to listen anyway.")
             
         self.status = "live"
         self.log("Live")
@@ -136,7 +106,6 @@ class ZoomBot(BaseBot):
             
         self.page.expose_function("sendAudioChunk", handle_chunk)
         
-        # AudioContext interception script (same mix logic)
         js_script = """
         (async () => {
             console.log("Injecting VibeNote Audio Capture Script...");
@@ -214,10 +183,10 @@ class ZoomBot(BaseBot):
             self.page.wait_for_timeout(1000)
 
     def leave(self):
-        self.log("Leaving Zoom meeting...")
+        self.log("Leaving Google Meet meeting...")
         try:
             if self.page:
-                leave_btn = self.page.locator("button:has-text('Leave'), .foot-button__leave-btn")
+                leave_btn = self.page.locator("[aria-label='Leave call']")
                 if leave_btn.is_visible():
                     leave_btn.click()
         except Exception:
