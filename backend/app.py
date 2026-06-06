@@ -190,66 +190,91 @@ def parse_audio_data(audio_bytes):
 
 def analyze_text_with_llm(text, industry, analysis_type):
     """
-    Uses Gemini or Groq to analyze transcript text.
-    analysis_type can be 'emotions_topics' or 'summary'.
+    Adapter function to delegate to gemini_client.py for Phase 3 requirements.
     """
-    prompt = ""
+    import gemini_client
+    
+    if not text:
+        return None
+
     if analysis_type == 'emotions_topics':
-        prompt = f"""
-        Analyze the following conversation transcript from the {industry} industry.
+        topic_strings = gemini_client.extract_topics(text)
+        topics = [{"text": t, "value": max(10, 95 - idx * 8)} for idx, t in enumerate(topic_strings)]
         
-        Transcript:
-        "{text}"
-        
-        1. Extract the main topics discussed. Return them as a JSON list of objects with keys 'text' (the topic name) and 'value' (relevance score from 10 to 100). Keep them concise.
-        2. Identify the emotional tone / sentiment distribution of the conversation. Return a JSON object with keys as emotions (e.g. Professional, Urgent, Concerned, Confident, Calm, Stressed) and values as percentage scores (summing to 100).
-        
-        Format your final response as a clean JSON object with keys "topics" and "emotions". Do not include markdown code block formatting (like ```json). Return ONLY raw JSON.
-        """
-    elif analysis_type == 'summary':
-        prompt = f"""
-        Provide a professional executive summary of the following conversation transcript from the {industry} industry.
-        
-        Transcript:
-        "{text}"
-        
-        Provide the response in Markdown format. Organize it with the following headers:
-        ### Executive Summary
-        (A concise 2-3 sentence overview of the meeting and its main purpose)
-        ### Key Takeaways
-        (A list of bullet points detailing the core details discussed)
-        ### Action Items
-        (A list of actionable steps, prefixed with [Urgent], [Critical], or [Operational] and who is responsible)
-        
-        Return ONLY the markdown text.
-        """
-
-    # Try Groq (Primary Model)
-    if get_groq_client():
-        try:
-            # Using llama-3.1-8b-instant for fast latency
-            chat_completion = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant",
-                temperature=0.2
-            )
-            if chat_completion.choices and chat_completion.choices[0].message.content:
-                return chat_completion.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"Groq generation failed: {e}. Trying Gemini...", file=sys.stderr)
-
-    # Try Gemini (Fallback Model)
-    if get_gemini_client():
-        try:
-            import google.generativeai as genai
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"Gemini generation failed: {e}.", file=sys.stderr)
+        # Analyze lines for emotions
+        lines = [l.strip() for l in text.split("\n") if l.strip() and ":" in l]
+        if not lines:
+            lines = [text]
             
-    # Fallback to local rule-based/mock data if LLMs are unavailable
+        emotions_count = {}
+        # Sample at most 8 lines to avoid too many sequential API requests
+        sample_lines = lines[:8]
+        for line in sample_lines:
+            parts = line.split(":", 1)
+            speaker = parts[0].strip() if len(parts) > 1 else "Speaker"
+            speech = parts[1].strip() if len(parts) > 1 else line
+            
+            res = gemini_client.analyze_line(speech, speaker, industry)
+            emo = res.get("emotion", "Neutral")
+            emotions_count[emo] = emotions_count.get(emo, 0) + 1
+            
+        total = sum(emotions_count.values())
+        if total > 0:
+            emotions = {k: round((v / total) * 100) for k, v in emotions_count.items()}
+        else:
+            emotions = {"Professional": 100}
+            
+        return json.dumps({"topics": topics, "emotions": emotions})
+        
+    elif analysis_type == 'summary':
+        # Analyze lines for emotions to pass to generate_summary
+        lines = [l.strip() for l in text.split("\n") if l.strip() and ":" in l]
+        if not lines:
+            lines = [text]
+            
+        emotions_count = {}
+        sample_lines = lines[:8]
+        for line in sample_lines:
+            parts = line.split(":", 1)
+            speaker = parts[0].strip() if len(parts) > 1 else "Speaker"
+            speech = parts[1].strip() if len(parts) > 1 else line
+            
+            res = gemini_client.analyze_line(speech, speaker, industry)
+            emo = res.get("emotion", "Neutral")
+            emotions_count[emo] = emotions_count.get(emo, 0) + 1
+            
+        emotions_list = [{"emotion": k, "count": v} for k, v in emotions_count.items()]
+        
+        summary_data = gemini_client.generate_summary(text, emotions_list, industry)
+        
+        # Format as the Markdown expected by the frontend
+        summary_md = f"""### Executive Summary
+{summary_data.get('summary', 'No summary available.')}
+
+### Key Takeaways
+"""
+        for topic in summary_data.get('key_topics', []):
+            summary_md += f"- {topic}\n"
+        if not summary_data.get('key_topics'):
+            summary_md += "- No key topics recorded.\n"
+            
+        summary_md += "\n### Decisions\n"
+        for dec in summary_data.get('decisions', []):
+            summary_md += f"- {dec}\n"
+        if not summary_data.get('decisions'):
+            summary_md += "- No specific decisions recorded.\n"
+
+        summary_md += "\n### Action Items\n"
+        for action in summary_data.get('action_items', []):
+            owner = action.get('owner', 'Unassigned')
+            task = action.get('task', 'Pending task')
+            deadline = action.get('deadline', 'TBD')
+            summary_md += f"- **{owner}**: {task} (Deadline: {deadline})\n"
+        if not summary_data.get('action_items'):
+            summary_md += "- No immediate action items.\n"
+            
+        return summary_md
+
     return None
 
 
@@ -258,14 +283,15 @@ def analyze_text_with_llm(text, industry, analysis_type):
 @app.route('/', methods=['GET'])
 def index():
     """Health check / API status endpoint."""
+    import gemini_client
     return jsonify({
         "status": "online",
         "service": "VibeNote AI Backend Pipeline",
         "engine": "Flask + Flask-SocketIO (eventlet)",
         "models_loaded": {
             "whisper": "Dynamic (lazy-loaded on CPU)",
-            "gemini": genai_configured,
-            "groq": groq_client is not None
+            "gemini": gemini_client.get_gemini_configured(),
+            "groq": gemini_client.get_groq_client() is not None
         }
     })
 
