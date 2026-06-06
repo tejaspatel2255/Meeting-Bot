@@ -1,137 +1,104 @@
 # VibeNote — Real-Time Sentiment & AI Meeting Analytics
 
-VibeNote is a next-generation real-time meeting analysis platform. It captures conversation audio (via direct microphone streaming, file uploads, or Chrome Extension tab audio capture), transcribes it in real-time, extracts key topics, performs emotional tone tracking, and generates polished executive summary reports tailored to specific industry verticals (Manufacturing, Construction, and Financial Services).
+VibeNote is a real-time meeting analysis platform. It captures conversation audio (via Chrome Extension tab audio capture or file uploads), transcribes it, extracts key topics, performs emotional tone tracking, and generates polished executive summary reports tailored to specific industry verticals (Manufacturing, Construction, and Financial Services).
 
 ---
 
-## 📂 Project Structure
+## 🚀 Setup in 5 Steps
 
-```text
-vibenote/
-├── backend/
-│   ├── app.py                # Flask app with Flask-SocketIO (eventlet) & CORS
-│   ├── config.py             # Configuration system loading env variables
-│   ├── requirements.txt      # Python dependencies (CPU-only PyTorch & Whisper)
-│   └── .env.example          # Template for Gemini, Groq, and HF API keys
-├── frontend/
-│   ├── index.html            # Premium glassmorphic analytics dashboard UI
-│   ├── app.js                # SocketIO client, MediaRecorder pipeline, & Chart.js
-│   └── styles.css            # Dark theme, layout grids, and animations
-├── extension/
-│   ├── manifest.json         # Chrome Extension Manifest V3 config
-│   ├── content.js            # Message relay bridge in the browser tab context
-│   ├── background.js         # Service Worker & Popup Controller dual script
-│   └── popup.html            # Extension popup capture control UI
-├── docker-compose.yml        # Docker service definition for CPU-only execution
-└── README.md                 # Project guide and execution documentation
+Follow these five steps to get the complete VibeNote pipeline running on your machine:
+
+### 1. Clone the Repository
+Clone the codebase to your local machine:
+```bash
+git clone https://github.com/tejaspatel2255/Meeting-Bot.git
+cd Meeting-Bot
 ```
 
----
+### 2. Create the `.env` Configuration File
+Create a `.env` file in the root directory and add your API keys:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+HF_TOKEN=your_hugging_face_token_here
+```
+> [!NOTE]
+> - **Gemini API Key**: Obtain from Google AI Studio.
+> - **Groq API Key**: Obtain from Groq Console.
+> - **HF Token**: Create a Read token on Hugging Face (Required for Pyannote speaker diarization). Ensure you accept terms for `pyannote/speaker-diarization-3.1` and `pyannote/segmentation-3.0`.
 
-## 🛠️ Tech Stack & Design
-
-- **Backend**: Python 3.11, Flask, Flask-SocketIO (backed by `eventlet` for high-concurrency real-time WebSocket communication), Flask-CORS.
-- **Audio & AI Processing**:
-  - **Whisper**: Local OpenAI Whisper (`tiny` model, loaded lazily on CPU) for high-performance offline transcription.
-  - **LLM Integrations**: Google Gemini (`gemini-1.5-flash`) or Groq (`llama3-8b-8192`) for extracting emotional spectrums, topic insights, and structuring markdown reports.
-  - **Graceful Fallbacks**: If API keys are missing or CPU hardware is constrained, the backend triggers an advanced industry-specific dialogue and analytics simulator. This lets you demo the entire live dashboard experience instantly out-of-the-box.
-- **Frontend**: Pure HTML5, CSS Grid/Flexbox (Premium glassmorphic dark design, micro-animations, custom scrollbars), Chart.js (for the doughnut-shaped Emotion Spectrum), Socket.IO Client.
-- **Chrome Extension**: Manifest V3 compliant. Uses `chrome.tabCapture` to capture audio from active browser tabs (Google Meet, Teams, Zoom Web, Youtube, etc.) and routes it dynamically to the dashboard using secure cross-context window messaging.
-
----
-
-## 🚀 Installation & Setup
-
-### Option 1: Running Locally (Recommended for Development)
-
-#### 1. Setup Backend Environment
-Make sure you have Python 3.11 installed.
-
+### 3. Install Python Dependencies
+Create a virtual environment and install dependencies:
 ```bash
-# Navigate to backend
+# Navigate to the backend directory
 cd backend
 
-# Create a virtual environment
+# Create and activate virtual environment
 python -m venv venv
-
-# Activate virtual environment
 # On Windows:
 .\venv\Scripts\activate
 # On macOS/Linux:
 source venv/bin/activate
 
-# Install dependencies (CPU index URL is pre-configured for PyTorch)
+# Install required packages
 pip install -r requirements.txt
 ```
+*(Make sure `ffmpeg` is installed on your system and is accessible in your system PATH environment variable).*
 
-#### 2. Install FFmpeg (Required for audio decoding)
-Whisper and audio processing libraries require `ffmpeg` to decode webm/opus files:
-- **On Windows**: Open a PowerShell window and run:
-  ```powershell
-  winget install FFmpeg
-  ```
-  *(Remember to restart your terminal window after installation so python registers the new PATH).*
-- **On macOS**: Run `brew install ffmpeg`.
-- **On Linux (Ubuntu/Debian)**: Run `sudo apt update && sudo apt install ffmpeg`.
-
-#### 3. Hugging Face Setup (Required for Speaker Diarization)
-VibeNote uses Pyannote for speaker diarization. Since Pyannote models are gated, you must accept their terms:
-1. Log in to [Hugging Face](https://huggingface.co/).
-2. Visit both of these repositories, fill out the basic form, and click **"Agree and access repository"**:
-   - [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
-   - [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
-3. Create a **Read** access token by going to your [Hugging Face Token Settings](https://huggingface.co/settings/tokens).
-4. Copy the token (starts with `hf_...`).
-
-#### 4. Configure Environment Variables
-Copy `.env.example` to `.env`:
+### 4. Start the Server
+Run the single entry point script to boot the backend:
 ```bash
-cp .env.example .env
+python run.py
 ```
-Open `.env` and fill in your keys:
-- `GEMINI_API_KEY`: Your Gemini API Key from Google AI Studio.
-- `GROQ_API_KEY`: Your Groq API Key from Groq Console.
-- `HF_TOKEN`: Your Hugging Face access token (generated in Step 3).
+This loads your `.env`, runs a quick configuration checklist, and runs the Socket.IO server on `http://localhost:5000`.
 
-#### 5. Run Backend
-```bash
-python app.py
-```
-The server will start on `http://localhost:5000`. On the very first run, it will automatically download the Whisper and Pyannote weights to your machine (approx. 500MB total). This is a one-time setup.
-
-#### 6. Run Frontend
-Simply open `frontend/index.html` in your web browser (or serve it via any static server, e.g. VS Code Live Server).
-
----
-
-### Option 2: Running via Docker Compose
-
-Docker Compose automatically pulls a Python 3.11 image, mounts the backend directory, installs the required system packages (`libsndfile1` for audio file support, `ffmpeg`), installs python requirements, and spins up the server.
-
-```bash
-# Build and run the container
-docker-compose up --build
-```
-The Flask-SocketIO backend container starts on port `5000` with hot-reloading enabled.
-
----
-
-## 🔌 Setting up the Chrome Extension
-
-The VibeNote Chrome Extension captures audio from tabs (e.g. video conferencing tabs) and streams it to the VibeNote dashboard.
-
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** (toggle switch in the top-right corner).
-3. Click the **Load unpacked** button in the top-left corner.
-4. Select the `extension/` directory of the VibeNote project.
-5. The extension icon will now appear in your browser. Pin it for quick access!
+### 5. Install the Chrome Extension
+Load the extension in your browser:
+1. Open Google Chrome and go to `chrome://extensions/`.
+2. Toggle **"Developer mode"** ON in the top-right corner.
+3. Click **"Load unpacked"** in the top-left corner and select the `extension/` folder in the project root.
+4. Open `frontend/index.html` directly in your browser.
 
 ---
 
 ## 📖 How to Use
 
-1. **Configure Vertical**: Select your industry (Manufacturing, Construction, Financial Services) in the dashboard or extension.
-2. **Start a Live Session**:
-   - **Direct Microphone**: Click **Start Live Session** on the dashboard. Grant microphone permission. Speak, and watch real-time transcript bubbles, topics, and emotion charts update dynamically. Click **Stop Live Session** to compile the final executive report.
-   - **Tab Capture (Chrome Extension)**: Open a tab with audio (like a video call or YouTube). Click the VibeNote Extension icon, input the server URL, select your industry, and click **Capture Tab Audio**. The extension will open a connection, sync with the dashboard tab, start streaming, and display real-time metrics on the dashboard tab. Click **Stop Capturing** inside the extension to finalize the session.
-3. **Upload Recording**: Click **Upload Recording** on the dashboard, select any audio file (`.wav`, `.mp3`, `.m4a`), and the backend will process the full file, transcribing and summarizing it in seconds.
+VibeNote operates in two modes:
+
+### Mode A: Live Tab Capture (Real-Time)
+Stream meetings directly from browser tabs (Google Meet, Zoom, Teams):
+1. Input your target meeting URL and select the Industry vertical in the dashboard.
+2. Click **Start Live Session**.
+3. Open your meeting tab, click the VibeNote extension icon in the Chrome toolbar, and click **Start Capturing** (allow tab capture permission).
+4. The extension captures and streams 1-second audio chunks to the backend, which feeds real-time transcript lines, sentiment indexes, and topics to the dashboard.
+5. Click **Stop Capturing** in the extension popup to stop the stream, and click **End Meeting** on the dashboard to trigger the final executive report.
+
+### Mode B: Batch File Upload (Asynchronous)
+Analyze pre-recorded meeting audio files:
+1. Select the Industry vertical on the dashboard.
+2. Click **Upload Recording** and choose your audio file (`.wav`, `.mp3`, `.m4a`, etc.).
+3. The dashboard will show a loading progress bar.
+4. The backend processes the audio on a background thread (`transcribe_file` → `diarize` → `assign_speakers`), runs analysis, and streams the updates to the dashboard as they compile.
+5. Once complete, the final compiled summary report displays at the bottom automatically.
+
+---
+
+## 📊 API & Free Tier Limits
+
+- **Google Gemini API**:
+  - **Free Tier limits**: 15 requests per minute (RPM) and 1,500 requests per day (RPD) on the `gemini-2.5-flash` model.
+- **Groq API**:
+  - **Free Tier limits**: 14,400 requests per day (RPD) on the `llama-3.1-8b-instant` model.
+- **Hugging Face / Pyannote**:
+  - Diarization pipelines are free but require gating approval and token authentication (`HF_TOKEN`).
+
+---
+
+## 🛠️ Troubleshooting
+
+- **Whisper Transcription is Too Slow**:
+  - If processing takes too long, configure `transcriber.py` to use the `tiny` or `base` model instead of `small` (e.g. `whisper.load_model("tiny", device="cpu")`).
+- **Gemini Rate Limit Exceeded**:
+  - VibeNote has built-in primary/secondary failover. If Gemini hits quota limits, the Groq API (`llama-3.1-8b-instant`) takes over automatically to process transcription lines and summaries.
+- **No Audio Captured (Silent feed)**:
+  - Ensure you click the **"Share tab audio"** checkbox in the Chrome tab capture sharing permission dialog when activating the extension.

@@ -5,8 +5,8 @@
     <title>VibeNote Capturer</title>
     <style>
         :root {
-            --bg-base: #0f1016;
-            --bg-card: rgba(26, 28, 41, 0.95);
+            --bg-base: #0a0b10;
+            --bg-card: rgba(22, 24, 37, 0.95);
             --primary: #8b5cf6;
             --primary-hover: #7c3aed;
             --secondary: #06b6d4;
@@ -30,16 +30,11 @@
         .header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-start;
+            gap: 10px;
             border-bottom: 1px solid var(--border);
             padding-bottom: 12px;
             margin-bottom: 16px;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 8px;
         }
 
         .logo-icon {
@@ -62,27 +57,39 @@
             letter-spacing: -0.5px;
         }
 
+        .status-section {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            background: var(--bg-card);
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .status-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
         .status-badge {
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 11px;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 4px 8px;
-            border-radius: 20px;
-            border: 1px solid var(--border);
+            font-size: 12px;
+            font-weight: 600;
         }
 
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: var(--text-muted);
+            background: var(--danger);
         }
 
         .status-dot.active {
-            background: var(--success);
-            box-shadow: 0 0 8px var(--success);
             animation: pulse 1.5s infinite;
         }
 
@@ -156,12 +163,18 @@
         .info-card {
             margin-top: 14px;
             padding: 10px;
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
             border-radius: 6px;
             font-size: 11px;
             color: var(--text-muted);
             line-height: 1.4;
+        }
+
+        .url-text {
+            color: var(--secondary);
+            font-weight: 600;
+            word-break: break-all;
         }
 
         @keyframes pulse {
@@ -172,19 +185,21 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo">
-            <div class="logo-icon">VN</div>
-            <div class="logo-title">VibeNote</div>
-        </div>
+        <div class="logo-icon">VN</div>
+        <div class="logo-title">VibeNote Web Capturer</div>
+    </div>
+
+    <div class="status-section">
+        <span class="status-label">Capture State</span>
         <div class="status-badge">
             <span class="status-dot" id="statusDot"></span>
-            <span id="statusText">Idle</span>
+            <span id="statusText">Stopped</span>
         </div>
     </div>
 
     <div class="form-group">
         <label for="serverUrl">VibeNote Server URL</label>
-        <input type="input" id="serverUrl" value="http://localhost:5000">
+        <input type="text" id="serverUrl" value="http://localhost:5000">
     </div>
 
     <div class="form-group">
@@ -197,15 +212,19 @@
     </div>
 
     <div class="btn-group">
-        <button class="btn-start" id="startBtn">Capture Tab Audio</button>
+        <button class="btn-start" id="startBtn">Start Capturing</button>
         <button class="btn-stop" id="stopBtn">Stop Capturing</button>
     </div>
 
     <div class="info-card">
-        Captures live audio of the active browser tab (e.g. Google Meet, Zoom, Teams web app) and streams it directly to your VibeNote dashboard.
+        <div style="margin-bottom: 6px;"><strong>Active Tab:</strong> <span class="url-text" id="tabUrl">Detecting...</span></div>
+        Captures tab audio from online meetings (Google Meet, Zoom, Teams) and streams it directly to your VibeNote dashboard.
     </div>
 
-    <!-- We load background.js. It detects the window context and acts as popup controller. -->
-    <script src="background.js"></script>
+    <div style="margin-top: 12px; text-align: center;">
+        <a href="http://localhost:5000" target="_blank" id="dashboardLink" style="color: var(--primary); font-size: 11px; text-decoration: none; font-weight: 600;">Open VibeNote Dashboard &rarr;</a>
+    </div>
+
+    <script src="popup.js"></script>
 </body>
 </html>
