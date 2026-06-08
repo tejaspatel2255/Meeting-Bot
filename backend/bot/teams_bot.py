@@ -81,22 +81,30 @@ class TeamsBot(BaseBot):
             
         self.status = "lobby"
         self.log("In lobby")
+        self.lobby_entered_at = time.time()
         
-        # Wait up to 30 seconds to be admitted
-        admitted = False
-        start_wait = time.time()
-        while time.time() - start_wait < 30:
-            # Check for Teams meeting control indicators like "Hang up" / "Leave" button or call duration indicator
-            if self.page.locator("[data-tid='call-hangup'], button:has-text('Leave'), [aria-label='Hang up']").is_visible():
-                admitted = True
+        while self.running:
+            # Check if blocked or denied entry
+            if self.page.locator("text=denied, text=declined, text=removed, text=can't join").is_visible():
+                self._notify("blocked", "Microsoft Teams blocked the bot. Use the Chrome extension instead.")
+                self.stop()
                 break
-            self.page.wait_for_timeout(1000)
+                
+            # Check if admitted
+            if self.page.locator("[data-tid='call-hangup'], button:has-text('Leave'), [aria-label='Hang up']").is_visible():
+                self.status = "live"
+                self._notify("admitted", "Bot successfully admitted to Teams.")
+                self.log("Live")
+                break
+                
+            # If still waiting in lobby, check timeout
+            self._check_lobby_timeout()
             
-        if not admitted:
-            self.log("Warning: Not admitted within 30 seconds. Starting listen loop.")
-            
-        self.status = "live"
-        self.log("Live")
+            # Sleep 10 seconds in small intervals to stay responsive to stop signals
+            for _ in range(10):
+                if not self.running:
+                    break
+                self.page.wait_for_timeout(1000)
 
     def capture_audio(self):
         def handle_chunk(float_list):

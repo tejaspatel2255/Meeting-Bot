@@ -80,6 +80,11 @@ function setupSocketListeners() {
     socket.on('final_report', (data) => {
         displayFinalReport(data);
     });
+
+    // Bot Notification Events (Lobby Timeout, Admitted, Blocked, Abandoned)
+    socket.on('bot_notification', (data) => {
+        showToastNotification(data);
+    });
 }
 
 // Setup Interactive Click & Upload Handlers
@@ -579,4 +584,116 @@ window.addEventListener('message', async (event) => {
         }
     }
 });
+
+// Toast notification helper for bot lobby events
+function showToastNotification(data) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.position = 'fixed';
+        container.style.top = '20px';
+        container.style.right = '20px';
+        container.style.zIndex = '9999';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '10px';
+        container.style.maxWidth = '380px';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = 'vibenote-toast';
+    
+    let bgColor = 'rgba(30, 41, 59, 0.85)';
+    let borderColor = 'rgba(255, 255, 255, 0.2)';
+    let icon = 'fa-info-circle';
+    
+    if (data.type === 'lobby_timeout') {
+        bgColor = 'rgba(234, 179, 8, 0.15)';
+        borderColor = '#eab308';
+        icon = 'fa-clock';
+    } else if (data.type === 'bot_abandoned') {
+        bgColor = 'rgba(239, 68, 68, 0.15)';
+        borderColor = '#ef4444';
+        icon = 'fa-circle-exclamation';
+    } else if (data.type === 'admitted') {
+        bgColor = 'rgba(34, 197, 94, 0.15)';
+        borderColor = '#22c55e';
+        icon = 'fa-circle-check';
+    } else if (data.type === 'blocked') {
+        bgColor = 'rgba(59, 130, 246, 0.15)';
+        borderColor = '#3b82f6';
+        icon = 'fa-ban';
+    }
+    
+    toast.style.background = bgColor;
+    toast.style.borderLeft = `5px solid ${borderColor}`;
+    toast.style.backdropFilter = 'blur(12px)';
+    toast.style.webkitBackdropFilter = 'blur(12px)';
+    toast.style.borderRadius = '6px';
+    toast.style.padding = '15px';
+    toast.style.color = '#f1f5f9';
+    toast.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.3), 0 4px 6px -4px rgba(0,0,0,0.3)';
+    toast.style.display = 'flex';
+    toast.style.flexDirection = 'column';
+    toast.style.gap = '8px';
+    toast.style.fontFamily = "'Outfit', sans-serif";
+    toast.style.fontSize = '14px';
+    toast.style.lineHeight = '1.4';
+    toast.style.transition = 'all 0.3s ease';
+    toast.style.transform = 'translateX(120%)';
+    toast.style.opacity = '0';
+    
+    let contentHtml = `
+        <div style="display: flex; align-items: start; gap: 10px;">
+            <i class="fa-solid ${icon}" style="color: ${borderColor}; font-size: 16px; margin-top: 2px;"></i>
+            <div style="flex-grow: 1;">
+                <strong style="color: #ffffff; display: block; margin-bottom: 2px;">Bot Notification</strong>
+                <span>${data.message}</span>
+            </div>
+            <button class="toast-close-btn" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 14px; padding: 0;">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    `;
+    
+    if (data.type === 'bot_abandoned') {
+        contentHtml += `
+            <div style="margin-top: 5px; display: flex; justify-content: flex-end;">
+                <button class="toast-action-btn" style="background: ${borderColor}; border: none; color: #ffffff; border-radius: 4px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload Recording Instead
+                </button>
+            </div>
+        `;
+    }
+    
+    toast.innerHTML = contentHtml;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.transform = 'translateX(0)';
+        toast.style.opacity = '1';
+    }, 10);
+    
+    const closeBtn = toast.querySelector('.toast-close-btn');
+    const dismissToast = () => {
+        toast.style.transform = 'translateX(120%)';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    };
+    closeBtn.addEventListener('click', dismissToast);
+    
+    if (data.type === 'bot_abandoned') {
+        const actionBtn = toast.querySelector('.toast-action-btn');
+        actionBtn.addEventListener('click', () => {
+            dismissToast();
+            audioUploadInput.click();
+        });
+        actionBtn.style.opacity = '1';
+    }
+    
+    const timeoutId = setTimeout(dismissToast, 8000);
+    toast.addEventListener('mouseenter', () => clearTimeout(timeoutId));
+}
 

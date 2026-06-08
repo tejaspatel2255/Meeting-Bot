@@ -77,24 +77,30 @@ class GoogleMeetBot(BaseBot):
             
         self.status = "lobby"
         self.log("In lobby")
+        self.lobby_entered_at = time.time()
         
-        admitted = False
-        start_wait = time.time()
-        while time.time() - start_wait < 30:
-            if self.page.locator("text=You can't join this call").is_visible():
-                raise RuntimeError("Access denied: You can't join this call.")
-                
-            if self.page.locator("[aria-label='Leave call'], button:has-text('Leave'), [aria-label='More options']").is_visible():
-                admitted = True
+        while self.running:
+            # Check if blocked or denied entry
+            if self.page.locator("text=You can't join this call, text=Someone in the meeting has denied your request").is_visible():
+                self._notify("blocked", "Google Meet blocked the bot. Use the Chrome extension instead.")
+                self.stop()
                 break
                 
-            self.page.wait_for_timeout(1000)
+            # Check if admitted
+            if self.page.locator("[aria-label='Leave call'], button:has-text('Leave'), [aria-label='More options']").is_visible():
+                self.status = "live"
+                self._notify("admitted", "Bot successfully admitted to Google Meet.")
+                self.log("Live")
+                break
+                
+            # If still waiting in lobby, check timeout
+            self._check_lobby_timeout()
             
-        if not admitted:
-            self.log("Warning: Not admitted within 30 seconds. Proceeding to listen anyway.")
-            
-        self.status = "live"
-        self.log("Live")
+            # Sleep 10 seconds in small intervals to stay responsive to stop signals
+            for _ in range(10):
+                if not self.running:
+                    break
+                self.page.wait_for_timeout(1000)
 
     def capture_audio(self):
         def handle_chunk(float_list):

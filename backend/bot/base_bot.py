@@ -32,6 +32,13 @@ class BaseBot(abc.ABC):
         self.logs = ["Launching"]
         self.start_time = time.time()
         self.error_msg = None
+        
+        # Lobby configuration
+        self.lobby_timeout = int(os.getenv("LOBBY_TIMEOUT", 120))
+        self.max_lobby_notifications = int(os.getenv("MAX_LOBBY_NOTIFICATIONS", 3))
+        self.lobby_entered_at = None
+        self.lobby_notifications_sent = 0
+        self.last_notification_sent_at = 0
 
     def log(self, message: str):
         print(f"[Bot][{self.meeting_id}] {message}", flush=True)
@@ -105,6 +112,44 @@ class BaseBot(abc.ABC):
         if self.socketio:
             self.socketio.emit("transcript_line", line_data, room=self.meeting_id)
             self.socketio.emit("live_transcript", {"speaker": "VibeNote Bot", "text": text, "timestamp": timestamp}, room=self.meeting_id)
+
+    def _notify(self, type: str, message: str, extra: dict = {}):
+        self.log(f"Notification [{type}]: {message}")
+        if self.socketio:
+            data = {
+                "type": type,
+                "message": message,
+                "meeting_id": self.meeting_id,
+                "timestamp": time.time()
+            }
+            data.update(extra)
+            self.socketio.emit("bot_notification", data, room=self.meeting_id)
+
+    def _check_lobby_timeout(self):
+        if not self.lobby_entered_at:
+            self.lobby_entered_at = time.time()
+            self.lobby_notifications_sent = 0
+            self.last_notification_sent_at = 0
+            
+        elapsed = time.time() - self.lobby_entered_at
+        if elapsed > self.lobby_timeout:
+            now = time.time()
+            if self.lobby_notifications_sent == 0 or (now - self.last_notification_sent_at >= 60):
+                self.lobby_notifications_sent += 1
+                self.last_notification_sent_at = now
+                
+                if self.lobby_notifications_sent <= self.max_lobby_notifications:
+                    self._notify(
+                        "lobby_timeout",
+                        f"Bot has been waiting in lobby for {int(elapsed // 60)} minutes. Please admit VibeNote Bot from the meeting.",
+                        {"waited_seconds": int(elapsed)}
+                    )
+                else:
+                    self._notify(
+                        "bot_abandoned",
+                        "Bot gave up waiting after 4 minutes. Please rejoin manually or upload a recording."
+                    )
+                    self.stop()
             
             # Aggregate global emotions spectrum update
             # We can update global state via Socket.IO if needed, but emitting directly is the primary requirement.
