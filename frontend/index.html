@@ -561,6 +561,7 @@
             
             <div class="controls-section">
                 <input type="url" id="meetingUrl" placeholder="Meeting URL..." value="https://meet.google.com/vibe-note-demo" style="width: 220px; background: var(--bg-panel-alt); border: 1px solid var(--border); color: var(--text-main); padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none;">
+                <input type="email" id="reportEmail" placeholder="Email for report (optional)" style="width: 200px; background: var(--bg-panel-alt); border: 1px solid var(--border); color: var(--text-main); padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none;">
                 
                 <select id="industrySelect">
                     <option value="manufacturing">Manufacturing</option>
@@ -755,13 +756,14 @@
         startLiveBtn.addEventListener('click', async () => {
             const industry = document.getElementById('industrySelect').value;
             const meetingUrl = document.getElementById('meetingUrl').value || window.location.href;
+            const reportEmail = document.getElementById('reportEmail').value || null;
             
             // Create active meeting session on backend
             try {
                 const res = await fetch('http://localhost:5000/api/join', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: meetingUrl, industry: industry })
+                    body: JSON.stringify({ url: meetingUrl, industry: industry, email: reportEmail })
                 });
                 const data = await res.json();
                 

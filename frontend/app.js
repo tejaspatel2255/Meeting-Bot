@@ -516,7 +516,7 @@ window.addEventListener('message', async (event) => {
             const response = await fetch(`${BACKEND_URL}/api/join`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: data.url, industry: data.industry })
+                body: JSON.stringify({ url: data.url, industry: data.industry, email: data.email || null })
             });
             const resData = await response.json();
             

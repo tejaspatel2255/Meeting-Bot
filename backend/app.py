@@ -16,6 +16,7 @@ from speaker import diarize
 import gemini_client
 import knowledge_base
 from bot import bot_launcher
+import email_sender
 
 # Create Flask app and configure SocketIO
 app = Flask(__name__)
@@ -33,7 +34,8 @@ meeting_state = {
     "transcript": [],
     "emotions": [],
     "topics": [],
-    "meeting_id": None
+    "meeting_id": None,
+    "email": None
 }
 
 # Predefined fallback mock data for visual demo when not speaking or on failure
@@ -289,16 +291,29 @@ def health_status():
     })
 
 
+def monitor_and_send_joined_notification(to_email, platform, meeting_id):
+    start_time = time.time()
+    while time.time() - start_time < 300: # 5 minutes max
+        bot = bot_launcher.active_bots.get(meeting_id)
+        if bot and bot.status == "live":
+            email_sender.send_bot_joined_notification(to_email, platform, meeting_id)
+            break
+        elif not bot or bot.status in ["stopped", "error"]:
+            break
+        time.sleep(1)
+
+
 @app.route('/api/join', methods=['POST'])
 def api_join():
     """
     POST /api/join
-    Receives {url, industry}
+    Receives {url, industry, email}
     Detects platform from URL, resets meeting state, and returns session detail.
     """
     data = request.get_json() or {}
     url = data.get('url', 'http://localhost')
     industry = data.get('industry', 'Manufacturing').lower()
+    email = data.get('email')
     
     # 1. Detect platform from URL
     url_lower = url.lower()
@@ -323,6 +338,7 @@ def api_join():
     meeting_state["audio_chunks"] = []
     meeting_state["chunk_count"] = 0
     meeting_state["has_real_speech"] = False
+    meeting_state["email"] = email
     
     print(f"Session Joined: {meeting_id} | Platform: {platform} | Industry: {industry}", flush=True)
     
@@ -330,6 +346,11 @@ def api_join():
     bot_platform = bot_launcher.launch_bot(url, meeting_id, industry, socketio)
     if bot_platform:
         platform = bot_platform
+        
+    if email:
+        t = threading.Thread(target=monitor_and_send_joined_notification, args=(email, platform, meeting_id))
+        t.daemon = True
+        t.start()
         
     # Returns {status: "ready", meeting_id, platform} (with backward compatibility key session_id)
     return jsonify({
@@ -422,6 +443,17 @@ def api_end():
         meeting_state["topics"] = mock_data["topics"]
         meeting_state["emotions"] = mock_data["emotions"]
         summary_md = mock_data["summary"]
+        
+        summary_res = {
+            "summary": "This is a demonstration summary of the meeting based on simulated vertical data.",
+            "overall_sentiment": "Neutral",
+            "key_topics": mock_data["topics"],
+            "decisions": ["Proceeded with the demo setup and confirmed pipeline functionality."],
+            "action_items": [
+                {"owner": "Demo User", "task": "Review VibeNote functionality", "deadline": "Immediate"}
+            ],
+            "emotional_insights": ["The session was calm, professional and neutral."]
+        }
     else:
         # Build full transcript string
         full_text = " ".join([f"{item['speaker']}: {item['text']}" for item in meeting_state["transcript"]])
@@ -444,6 +476,16 @@ def api_end():
     chart_emotions = get_emotions_chart_data(meeting_state["emotions"])
     formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(meeting_state["topics"])]
     
+    # Send email summary in background if email is configured
+    email_to = meeting_state.get("email")
+    if email_to:
+        email_thread = threading.Thread(
+            target=email_sender.send_meeting_report,
+            args=(email_to, summary_res, session_id)
+        )
+        email_thread.daemon = True
+        email_thread.start()
+
     final_report = {
         "status": "success",
         "session_id": session_id,
