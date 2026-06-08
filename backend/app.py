@@ -105,11 +105,11 @@ state_manager = MeetingStateManager()
 INDUSTRY_DATA = {
     "manufacturing": {
         "dialogue": [
-            {"speaker": "Manager", "text": "Good morning team. Let's review the production delays on Assembly Line 3. The main hydraulic valve is malfunctioning.", "timestamp": "0:05"},
-            {"speaker": "Lead Engineer", "text": "Yes, the replacement part is backordered. We are looking at a 48-hour delay unless we source a compatible valve locally.", "timestamp": "0:25"},
-            {"speaker": "Manager", "text": "We can't wait 48 hours. Every hour of downtime costs us roughly ten thousand dollars in lost throughput.", "timestamp": "0:45"},
-            {"speaker": "Procurement", "text": "I checked Apex Distributors. They have a unit in stock that matches our specs, but it carries a twenty percent markup.", "timestamp": "1:05"},
-            {"speaker": "Manager", "text": "Pay the premium and arrange an expedited hot-shot delivery. Also, ensure safety tagout protocols are fully followed before installation.", "timestamp": "1:30"}
+            {"speaker": "Manager", "text": "Good morning team. Let's review the production delays on Assembly Line 3. The main hydraulic valve is malfunctioning.", "timestamp": "0:05", "emotion": "Neutral"},
+            {"speaker": "Lead Engineer", "text": "Yes, the replacement part is backordered. We are looking at a 48-hour delay unless we source a compatible valve locally.", "timestamp": "0:25", "emotion": "Concerned"},
+            {"speaker": "Manager", "text": "We can't wait 48 hours. Every hour of downtime costs us roughly ten thousand dollars in lost throughput.", "timestamp": "0:45", "emotion": "Urgent"},
+            {"speaker": "Procurement", "text": "I checked Apex Distributors. They have a unit in stock that matches our specs, but it carries a twenty percent markup.", "timestamp": "1:05", "emotion": "Focused"},
+            {"speaker": "Manager", "text": "Pay the premium and arrange an expedited hot-shot delivery. Also, ensure safety tagout protocols are fully followed before installation.", "timestamp": "1:30", "emotion": "Relieved"}
         ],
         "topics": ["Line 3 Downtime", "Hydraulic Valve", "Supplier Backlog", "Apex Procurement", "Safety Tagout", "Hourly Loss ($10K)"],
         "emotions": ["Professional", "Urgent", "Concerned", "Relieved", "Neutral"],
@@ -130,11 +130,11 @@ A critical malfunction of the main hydraulic valve on Assembly Line 3 has halted
     },
     "construction": {
         "dialogue": [
-            {"speaker": "Project Manager", "text": "Welcome to the site alignment. We have a zoning setback issue with the foundation pour on Sector B. The concrete inspector flag is still red.", "timestamp": "0:07"},
-            {"speaker": "Subcontractor", "text": "The municipal inspector requested an updated structural plan because of the new soil density readings we submitted last week.", "timestamp": "0:28"},
-            {"speaker": "Project Manager", "text": "We need this resolved by Thursday. The steel framing crew is scheduled to arrive next Monday, and they won't wait.", "timestamp": "0:48"},
-            {"speaker": "Structural Engineer", "text": "I have drafted the revised foundation plans. I will stamp and submit them to the city portal by this afternoon.", "timestamp": "1:10"},
-            {"speaker": "Project Manager", "text": "Excellent. Make sure you call the inspector directly to expedite the sign-off. We can't let the steel crew sit idle.", "timestamp": "1:32"}
+            {"speaker": "Project Manager", "text": "Welcome to the site alignment. We have a zoning setback issue with the foundation pour on Sector B. The concrete inspector flag is still red.", "timestamp": "0:07", "emotion": "Neutral"},
+            {"speaker": "Subcontractor", "text": "The municipal inspector requested an updated structural plan because of the new soil density readings we submitted last week.", "timestamp": "0:28", "emotion": "Apprehensive"},
+            {"speaker": "Project Manager", "text": "We need this resolved by Thursday. The steel framing crew is scheduled to arrive next Monday, and they won't wait.", "timestamp": "0:48", "emotion": "Urgent"},
+            {"speaker": "Structural Engineer", "text": "I have drafted the revised foundation plans. I will stamp and submit them to the city portal by this afternoon.", "timestamp": "1:10", "emotion": "Focused"},
+            {"speaker": "Project Manager", "text": "Excellent. Make sure you call the inspector directly to expedite the sign-off. We can't let the steel crew sit idle.", "timestamp": "1:32", "emotion": "Determined"}
         ],
         "topics": ["Sector B Foundation", "Zoning Permit", "Soil Density Report", "Steel Framing Crew", "Expedited Inspection", "Project Schedule"],
         "emotions": ["Professional", "Stressed", "Determined", "Focused"],
@@ -155,11 +155,11 @@ The weekly site meeting addressed a zoning and engineering roadblock on Sector B
     },
     "financial_services": {
         "dialogue": [
-            {"speaker": "Wealth Advisor", "text": "Thanks for joining. Given the Federal Reserve's latest rate hikes, we need to rebalance your asset allocation to mitigate market volatility.", "timestamp": "0:06"},
-            {"speaker": "Client", "text": "I've been feeling nervous looking at the market swings. Should we transition some of our equity holdings into safer yields?", "timestamp": "0:24"},
-            {"speaker": "Wealth Advisor", "text": "Yes. Short-term Treasury bills are yielding over five percent risk-free. It's a great harbor while equity valuations stabilize.", "timestamp": "0:45"},
-            {"speaker": "Client", "text": "That makes sense. Let's do a fifteen percent reallocation from my growth stock index to the high-yield T-bills.", "timestamp": "1:02"},
-            {"speaker": "Wealth Advisor", "text": "Sounds like a solid plan. I will draft the authorization documents and send them via DocuSign this afternoon.", "timestamp": "1:22"}
+            {"speaker": "Wealth Advisor", "text": "Thanks for joining. Given the Federal Reserve's latest rate hikes, we need to rebalance your asset allocation to mitigate market volatility.", "timestamp": "0:06", "emotion": "Neutral"},
+            {"speaker": "Client", "text": "I've been feeling nervous looking at the market swings. Should we transition some of our equity holdings into safer yields?", "timestamp": "0:24", "emotion": "Concerned"},
+            {"speaker": "Wealth Advisor", "text": "Yes. Short-term Treasury bills are yielding over five percent risk-free. It's a great harbor while equity valuations stabilize.", "timestamp": "0:45", "emotion": "Focused"},
+            {"speaker": "Client", "text": "That makes sense. Let's do a fifteen percent reallocation from my growth stock index to the high-yield T-bills.", "timestamp": "1:02", "emotion": "Neutral"},
+            {"speaker": "Wealth Advisor", "text": "Sounds like a solid plan. I will draft the authorization documents and send them via DocuSign this afternoon.", "timestamp": "1:22", "emotion": "Satisfied"}
         ],
         "topics": ["Fed Rate Hikes", "Portfolio Rebalancing", "Market Volatility", "Treasury Bills (5%+)", "Asset Allocation", "DocuSign Signature"],
         "emotions": ["Professional", "Calm", "Apprehensive", "Satisfied"],
