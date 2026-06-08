@@ -157,17 +157,3 @@ If you prefer to stream audio directly from your active browser tab instead of u
 4.  Input the server URL `http://localhost:5000` in the extension popup and click **Capture Tab Audio**.
 
 ---
-
-## 🔒 Safety & Git Push
-
-The `.gitignore` is configured to ensure no local databases or credentials are ever checked in:
-*   Ignores virtual environments (`venv/`, `env/`).
-*   Ignores local credentials (`.env`, `.env.*`).
-*   Excludes local SQLite database files (`vibenote.db`, `*.db`, `*.sqlite`).
-
-You can safely push updates to your repository:
-```bash
-git add .
-git commit -m "Implement SQLite persistence layer, VAD gate, and dashboard meeting history"
-git push origin main
-```
