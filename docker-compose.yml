@@ -20,7 +20,10 @@ services:
       - PULSE_SERVER=unix:/run/pulse/native
       - PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     command: >
-      sh -c "apt-get update && 
+      sh -c "echo 'Acquire::http::Pipeline-Depth \"0\";' > /etc/apt/apt.conf.d/99nopipeline && 
+             sed -i 's/http:/https:/g' /etc/apt/sources.list || true && 
+             sed -i 's/http:/https:/g' /etc/apt/sources.list.d/* || true && 
+             apt-get update && 
              apt-get install -y libsndfile1 ffmpeg xvfb pulseaudio chromium && 
              pip install --no-cache-dir -r requirements.txt && 
              python run.py"
