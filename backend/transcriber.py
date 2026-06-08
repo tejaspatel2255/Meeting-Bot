@@ -40,13 +40,16 @@ def get_small_model():
     return _whisper_small
 
 
-def transcribe_chunk(audio_bytes: bytes) -> str:
+from vad import contains_speech
+
+def transcribe_chunk(audio_bytes: bytes) -> str | None:
     """
     Accepts raw audio bytes (webm/opus from browser), converts to 
-    16kHz float32 numpy array, and transcribes using the base model on CPU.
+    16kHz float32 numpy array, runs VAD gate, and transcribes using the base model on CPU.
+    Returns None if silence or very short output.
     """
     if not audio_bytes or len(audio_bytes) == 0:
-        return ""
+        return None
         
     temp_path = None
     try:
@@ -79,10 +82,20 @@ def transcribe_chunk(audio_bytes: bytes) -> str:
             except Exception as ffmpeg_err:
                 raise RuntimeError(f"Audio loading failed. Soundfile: {sf_err}. ffmpeg: {ffmpeg_err}")
 
+        # VAD gate — check before sending to Whisper
+        if not contains_speech(audio_array):
+            return None   # skip — no speech detected
+
         # Run inference using the cached base model
         model = get_base_model()
         result = model.transcribe(audio_array, fp16=False, language='en')
-        return result.get("text", "").strip()
+        text = result.get("text", "").strip()
+
+        # Additional guard: skip very short outputs (likely noise artifacts)
+        if len(text) < 3:
+            return None
+
+        return text
 
     except Exception as e:
         print(f"Error in transcribe_chunk: {e}", file=sys.stderr, flush=True)

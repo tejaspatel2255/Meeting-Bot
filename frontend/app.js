@@ -260,6 +260,7 @@ async function startLiveAudioStream() {
 
         // Join room in Socket
         if (socket && socket.connected) {
+            socket.emit('join_room', { meeting_id: activeSessionId });
             socket.emit('join_session', { session_id: activeSessionId });
         }
 
@@ -525,6 +526,7 @@ window.addEventListener('message', async (event) => {
                 
                 // Connect/Join SocketIO room
                 if (socket && socket.connected) {
+                    socket.emit('join_room', { meeting_id: activeSessionId });
                     socket.emit('join_session', { session_id: activeSessionId });
                 }
 

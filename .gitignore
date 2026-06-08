@@ -82,3 +82,4 @@ backend/uploads/*
 *.log
 *.sqlite
 *.db
+vibenote.db

@@ -87,8 +87,8 @@ class BaseBot(abc.ABC):
         
         # Process transcription chunk
         text = transcribe_chunk(audio_bytes)
-        if not text:
-            return
+        if text is None:
+            return   # silence — skip
             
         elapsed_sec = int(time.time() - self.start_time)
         min_part = elapsed_sec // 60

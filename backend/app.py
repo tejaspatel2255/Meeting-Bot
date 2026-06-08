@@ -6,6 +6,7 @@ import time
 import base64
 import tempfile
 import threading
+from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
@@ -17,6 +18,7 @@ import gemini_client
 import knowledge_base
 from bot import bot_launcher
 import email_sender
+from database import db
 
 # Create Flask app and configure SocketIO
 app = Flask(__name__)
@@ -27,16 +29,77 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 # Create upload folder if it doesn't exist
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
 
-# 1. In-memory meeting state dict
-meeting_state = {
-    "active": False,
-    "industry": "manufacturing",
-    "transcript": [],
-    "emotions": [],
-    "topics": [],
-    "meeting_id": None,
-    "email": None
-}
+
+class MeetingStateManager:
+    def __init__(self):
+        self._meetings = {}          # meeting_id → state dict
+        self._lock = threading.Lock()
+
+    def create(self, meeting_id: str, industry: str, email: str = None) -> dict:
+        """Create new isolated state for a meeting"""
+        state = {
+            "meeting_id": meeting_id,
+            "industry": industry,
+            "email": email,
+            "active": True,
+            "transcript": [],
+            "emotions": [],
+            "topics": [],
+            "audio_chunks": [],
+            "chunk_count": 0,
+            "has_real_speech": False,
+            "start_time": time.time(),
+            "platform": None,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        with self._lock:
+            self._meetings[meeting_id] = state
+        return state
+
+    def get(self, meeting_id: str) -> dict | None:
+        with self._lock:
+            return self._meetings.get(meeting_id)
+
+    def update(self, meeting_id: str, key: str, value):
+        with self._lock:
+            if meeting_id in self._meetings:
+                self._meetings[meeting_id][key] = value
+
+    def append(self, meeting_id: str, key: str, item):
+        with self._lock:
+            if meeting_id in self._meetings:
+                self._meetings[meeting_id][key].append(item)
+
+    def end(self, meeting_id: str):
+        with self._lock:
+            if meeting_id in self._meetings:
+                self._meetings[meeting_id]["active"] = False
+
+    def delete(self, meeting_id: str):
+        with self._lock:
+            self._meetings.pop(meeting_id, None)
+
+    def list_active(self) -> list[str]:
+        with self._lock:
+            return [mid for mid, s in self._meetings.items() if s["active"]]
+
+    def get_all_active_details(self) -> list[dict]:
+        with self._lock:
+            active_meetings = []
+            for mid, s in self._meetings.items():
+                if s.get("active"):
+                    active_meetings.append({
+                        "meeting_id": mid,
+                        "platform": s.get("platform", "Unknown"),
+                        "industry": s.get("industry", "Manufacturing"),
+                        "transcript_count": len(s.get("transcript", [])),
+                        "created_at": s.get("created_at")
+                    })
+            return active_meetings
+
+
+# Single global instance
+state_manager = MeetingStateManager()
 
 # Predefined fallback mock data for visual demo when not speaking or on failure
 INDUSTRY_DATA = {
@@ -183,7 +246,8 @@ def process_uploaded_file(file_path, industry, meeting_id):
         # 2. For each segment: runs analyze_line + scan_for_jargon
         for idx, seg in enumerate(segments):
             # Guard check if meeting has been reset or stopped in the meantime
-            if meeting_state["meeting_id"] != meeting_id or not meeting_state["active"]:
+            state = state_manager.get(meeting_id)
+            if not state or not state["active"]:
                 print(f"[Thread] Session {meeting_id} is no longer active. Aborting file processing.", flush=True)
                 return
 
@@ -197,7 +261,7 @@ def process_uploaded_file(file_path, industry, meeting_id):
             insight = analysis.get("insight", "")
             jargon_terms = analysis.get("jargon_terms", [])
             
-            meeting_state["emotions"].append(emotion)
+            state_manager.append(meeting_id, "emotions", emotion)
             
             line_data = {
                 "speaker": speaker,
@@ -207,61 +271,70 @@ def process_uploaded_file(file_path, industry, meeting_id):
                 "insight": insight,
                 "jargon_terms": jargon_terms
             }
-            meeting_state["transcript"].append(line_data)
+            state_manager.append(meeting_id, "transcript", line_data)
+            db.save_transcript_line(meeting_id, line_data)
             
             # Emit live updates via SocketIO
             socketio.emit("transcript_line", line_data, room=meeting_id)
             socketio.emit("live_transcript", {"speaker": speaker, "text": text, "timestamp": timestamp}, room=meeting_id)
             
-            chart_emotions = get_emotions_chart_data(meeting_state["emotions"])
-            socketio.emit("live_emotions", chart_emotions, room=meeting_id)
+            updated_state = state_manager.get(meeting_id)
+            if updated_state:
+                chart_emotions = get_emotions_chart_data(updated_state["emotions"])
+                socketio.emit("live_emotions", chart_emotions, room=meeting_id)
             
             # 3. Every 10 segments: runs extract_topics
             if (idx + 1) % 10 == 0:
-                transcript_so_far = " ".join([f"{l['speaker']}: {l['text']}" for l in meeting_state["transcript"]])
-                raw_topics = gemini_client.extract_topics(transcript_so_far)
-                meeting_state["topics"] = raw_topics
-                
-                socketio.emit("topics_update", raw_topics, room=meeting_id)
-                formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(raw_topics)]
-                socketio.emit("live_topics", formatted_topics, room=meeting_id)
+                updated_state = state_manager.get(meeting_id)
+                if updated_state:
+                    transcript_so_far = " ".join([f"{l['speaker']}: {l['text']}" for l in updated_state["transcript"]])
+                    raw_topics = gemini_client.extract_topics(transcript_so_far)
+                    state_manager.update(meeting_id, "topics", raw_topics)
+                    
+                    socketio.emit("topics_update", raw_topics, room=meeting_id)
+                    formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(raw_topics)]
+                    socketio.emit("live_topics", formatted_topics, room=meeting_id)
                 
             time.sleep(0.5)  # slight throttle to create sliding live stream effect
             
         # Final extraction of topics if not extracted
-        if not meeting_state["topics"] or len(segments) % 10 != 0:
-            transcript_so_far = " ".join([f"{l['speaker']}: {l['text']}" for l in meeting_state["transcript"]])
+        updated_state = state_manager.get(meeting_id)
+        if updated_state and (not updated_state["topics"] or len(segments) % 10 != 0):
+            transcript_so_far = " ".join([f"{l['speaker']}: {l['text']}" for l in updated_state["transcript"]])
             raw_topics = gemini_client.extract_topics(transcript_so_far)
-            meeting_state["topics"] = raw_topics
+            state_manager.update(meeting_id, "topics", raw_topics)
             
             socketio.emit("topics_update", raw_topics, room=meeting_id)
             formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(raw_topics)]
             socketio.emit("live_topics", formatted_topics, room=meeting_id)
 
         # Generate full meeting summary
-        full_text = " ".join([f"{l['speaker']}: {l['text']}" for l in meeting_state["transcript"]])
-        emotions_count = {}
-        for emo in meeting_state["emotions"]:
-            emotions_count[emo] = emotions_count.get(emo, 0) + 1
-        emotions_list = [{"emotion": k, "count": v} for k, v in emotions_count.items()]
-        
-        summary_res = gemini_client.generate_summary(full_text, emotions_list, industry)
-        summary_md = format_summary_markdown(summary_res)
-        
-        chart_emotions = get_emotions_chart_data(meeting_state["emotions"])
-        formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(meeting_state["topics"])]
-        
-        # Emit final report completed event to room
-        socketio.emit("final_report", {
-            "status": "success",
-            "industry": industry,
-            "transcript": meeting_state["transcript"],
-            "topics": formatted_topics,
-            "emotions": chart_emotions,
-            "summary": summary_md
-        }, room=meeting_id)
-        
-        print(f"[Thread] Finished processing. Emitted final compiled report for room {meeting_id}.", flush=True)
+        updated_state = state_manager.get(meeting_id)
+        if updated_state:
+            full_text = " ".join([f"{l['speaker']}: {l['text']}" for l in updated_state["transcript"]])
+            emotions_count = {}
+            for emo in updated_state["emotions"]:
+                emotions_count[emo] = emotions_count.get(emo, 0) + 1
+            emotions_list = [{"emotion": k, "count": v} for k, v in emotions_count.items()]
+            
+            summary_res = gemini_client.generate_summary(full_text, emotions_list, industry)
+            db.save_summary(meeting_id, summary_res)
+            summary_md = format_summary_markdown(summary_res)
+            
+            chart_emotions = get_emotions_chart_data(updated_state["emotions"])
+            formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(updated_state["topics"])]
+            
+            # Emit final report completed event to room
+            socketio.emit("final_report", {
+                "status": "success",
+                "industry": industry,
+                "transcript": updated_state["transcript"],
+                "topics": formatted_topics,
+                "emotions": chart_emotions,
+                "summary": summary_md
+            }, room=meeting_id)
+            
+            print(f"[Thread] Finished processing. Emitted final compiled report for room {meeting_id}.", flush=True)
 
     except Exception as e:
         print(f"[Thread] Error in background file processing: {e}", file=sys.stderr, flush=True)
@@ -326,19 +399,9 @@ def api_join():
     else:
         platform = "Web Browser"
         
-    # 2. Reset meeting state
     meeting_id = f"sess_{uuid.uuid4().hex[:8]}"
-    meeting_state["active"] = True
-    meeting_state["industry"] = industry
-    meeting_state["transcript"] = []
-    meeting_state["emotions"] = []
-    meeting_state["topics"] = []
-    meeting_state["meeting_id"] = meeting_id
-    meeting_state["start_time"] = time.time()
-    meeting_state["audio_chunks"] = []
-    meeting_state["chunk_count"] = 0
-    meeting_state["has_real_speech"] = False
-    meeting_state["email"] = email
+    state = state_manager.create(meeting_id, industry, email)
+    state_manager.update(meeting_id, "platform", platform)
     
     print(f"Session Joined: {meeting_id} | Platform: {platform} | Industry: {industry}", flush=True)
     
@@ -346,12 +409,14 @@ def api_join():
     bot_platform = bot_launcher.launch_bot(url, meeting_id, industry, socketio)
     if bot_platform:
         platform = bot_platform
+        state_manager.update(meeting_id, "platform", platform)
         
     if email:
         t = threading.Thread(target=monitor_and_send_joined_notification, args=(email, platform, meeting_id))
         t.daemon = True
         t.start()
         
+    db.save_meeting(meeting_id, platform, industry, email)
     # Returns {status: "ready", meeting_id, platform} (with backward compatibility key session_id)
     return jsonify({
         "status": "ready",
@@ -378,6 +443,7 @@ def api_upload():
     industry = request.form.get('industry', 'Manufacturing').lower()
     if industry not in ["manufacturing", "construction", "financial services"]:
         industry = "manufacturing"
+    email = request.form.get('email')
 
     # Save to temp directory
     temp_dir = tempfile.gettempdir()
@@ -388,18 +454,10 @@ def api_upload():
     
     print(f"File uploaded to {file_path}. Resetting meeting state to background processing...", flush=True)
     
-    # Reset and initialize meeting state
     meeting_id = f"sess_{uuid.uuid4().hex[:8]}"
-    meeting_state["active"] = True
-    meeting_state["industry"] = industry
-    meeting_state["transcript"] = []
-    meeting_state["emotions"] = []
-    meeting_state["topics"] = []
-    meeting_state["meeting_id"] = meeting_id
-    meeting_state["start_time"] = time.time()
-    meeting_state["audio_chunks"] = []
-    meeting_state["chunk_count"] = 0
-    meeting_state["has_real_speech"] = False
+    state = state_manager.create(meeting_id, industry, email)
+    state_manager.update(meeting_id, "platform", "Uploaded Audio")
+    db.save_meeting(meeting_id, "Uploaded Audio", industry, email)
     
     # Threading for upload processing
     thread = threading.Thread(target=process_uploaded_file, args=(file_path, industry, meeting_id))
@@ -423,25 +481,29 @@ def api_end():
     data = request.get_json() or {}
     session_id = data.get('session_id') or data.get('meeting_id')
     
-    if not session_id or session_id != meeting_state["meeting_id"]:
-        return jsonify({"status": "error", "message": "Invalid or inactive session ID"}), 400
+    if not session_id:
+        return jsonify({"status": "error", "message": "Invalid session ID"}), 400
+        
+    state = state_manager.get(session_id)
+    if not state:
+        return jsonify({"status": "error", "message": "Session not found"}), 404
         
     # Set active=False
-    meeting_state["active"] = False
-    industry = meeting_state["industry"]
+    state_manager.end(session_id)
+    industry = state["industry"]
     
     # Stop the headless meeting bot
     bot_launcher.stop_bot(session_id)
     
     # If transcript is completely empty, default to mock data so the dashboard doesn't display blank
-    if not meeting_state["transcript"]:
+    if not state["transcript"]:
         normalized_ind = industry.lower().replace(" ", "_")
         mock_data = INDUSTRY_DATA.get(normalized_ind, INDUSTRY_DATA["manufacturing"])
         
         # Populate state from mock data
-        meeting_state["transcript"] = mock_data["dialogue"]
-        meeting_state["topics"] = mock_data["topics"]
-        meeting_state["emotions"] = mock_data["emotions"]
+        state_manager.update(session_id, "transcript", mock_data["dialogue"])
+        state_manager.update(session_id, "topics", mock_data["topics"])
+        state_manager.update(session_id, "emotions", mock_data["emotions"])
         summary_md = mock_data["summary"]
         
         summary_res = {
@@ -454,13 +516,16 @@ def api_end():
             ],
             "emotional_insights": ["The session was calm, professional and neutral."]
         }
+        # Save mock transcript lines to DB
+        for line in mock_data["dialogue"]:
+            db.save_transcript_line(session_id, line)
     else:
         # Build full transcript string
-        full_text = " ".join([f"{item['speaker']}: {item['text']}" for item in meeting_state["transcript"]])
+        full_text = " ".join([f"{item['speaker']}: {item['text']}" for item in state["transcript"]])
         
         # Aggregate emotions to a list
         emotions_count = {}
-        for emo in meeting_state["emotions"]:
+        for emo in state["emotions"]:
             emotions_count[emo] = emotions_count.get(emo, 0) + 1
         emotions_list = [{"emotion": k, "count": v} for k, v in emotions_count.items()]
         
@@ -469,15 +534,18 @@ def api_end():
         summary_md = format_summary_markdown(summary_res)
         
         # Run extract_topics if topics list is empty
-        if not meeting_state["topics"]:
+        if not state["topics"]:
             raw_topics = gemini_client.extract_topics(full_text)
-            meeting_state["topics"] = raw_topics
+            state_manager.update(session_id, "topics", raw_topics)
 
-    chart_emotions = get_emotions_chart_data(meeting_state["emotions"])
-    formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(meeting_state["topics"])]
+    # Save summary to DB
+    db.save_summary(session_id, summary_res)
+    updated_state = state_manager.get(session_id)
+    chart_emotions = get_emotions_chart_data(updated_state["emotions"])
+    formatted_topics = [{"text": t, "value": 70 + (i * 3) % 30} for i, t in enumerate(updated_state["topics"])]
     
     # Send email summary in background if email is configured
-    email_to = meeting_state.get("email")
+    email_to = updated_state.get("email")
     if email_to:
         email_thread = threading.Thread(
             target=email_sender.send_meeting_report,
@@ -491,7 +559,7 @@ def api_end():
         "session_id": session_id,
         "meeting_id": session_id,
         "industry": industry,
-        "transcript": meeting_state["transcript"],
+        "transcript": updated_state["transcript"],
         "topics": formatted_topics,
         "emotions": chart_emotions,
         "summary": summary_md
@@ -501,13 +569,40 @@ def api_end():
     return jsonify(final_report)
 
 
-@app.route('/api/state', methods=['GET'])
-def api_state():
+@app.route('/api/state/<meeting_id>', methods=['GET'])
+def api_state(meeting_id):
     """
-    GET /api/state
-    Returns the current meeting_state (useful for dashboard reconnection)
+    GET /api/state/<meeting_id>
+    Returns the meeting state for the requested meeting_id.
     """
-    return jsonify(meeting_state)
+    state = state_manager.get(meeting_id)
+    if not state:
+        return jsonify({"status": "error", "message": "Meeting not found"}), 404
+    return jsonify(state)
+
+
+@app.route('/api/meetings', methods=['GET'])
+def api_meetings():
+    """
+    GET /api/meetings
+    Returns list of all active meetings.
+    """
+    return jsonify(state_manager.get_all_active_details())
+
+
+@app.route('/api/history', methods=['GET'])
+def api_history():
+    return jsonify(db.get_all_meetings())
+
+
+@app.route('/api/meeting/<meeting_id>/transcript', methods=['GET'])
+def api_meeting_transcript(meeting_id):
+    return jsonify(db.get_transcript(meeting_id))
+
+
+@app.route('/api/meeting/<meeting_id>/summary', methods=['GET'])
+def api_meeting_summary(meeting_id):
+    return jsonify(db.get_summary(meeting_id))
 
 
 @app.route('/api/bot/status/<meeting_id>', methods=['GET'])
@@ -530,11 +625,18 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     print("WebSocket client disconnected.", flush=True)
+@socketio.on('join_room')
+def handle_join_room(data):
+    meeting_id = data.get('meeting_id') or data.get('session_id')
+    if meeting_id:
+        join_room(meeting_id)
+        print(f"Client joined Socket room: {meeting_id}", flush=True)
+        emit('session_joined', {"status": "success", "meeting_id": meeting_id}, room=meeting_id)
 
 
 @socketio.on('join_session')
 def handle_join_session(data):
-    session_id = data.get('session_id')
+    session_id = data.get('session_id') or data.get('meeting_id')
     if session_id:
         join_room(session_id)
         print(f"Client joined Socket room: {session_id}", flush=True)
@@ -545,17 +647,21 @@ def handle_join_session(data):
 def handle_audio_chunk(data):
     """
     WebSocket event "audio_chunk"
-    Receives {audio: base64, speaker: str} (or compatible {session_id, chunk})
+    Receives {audio: base64, speaker: str, meeting_id: str}
     Decodes audio, runs transcribe_chunk, analyze_line, scan_for_jargon, extract_topics, and emits updates.
     """
     if not isinstance(data, dict):
         return
         
-    session_id = data.get('session_id') or meeting_state["meeting_id"]
+    session_id = data.get('session_id') or data.get('meeting_id')
     audio_base64 = data.get('audio') or data.get('chunk')
     speaker = data.get('speaker') or "Speaker"
     
     if not session_id or not audio_base64:
+        return
+        
+    state = state_manager.get(session_id)
+    if not state or not state["active"]:
         return
         
     # Decodes audio
@@ -566,38 +672,39 @@ def handle_audio_chunk(data):
         return
         
     # Store chunk in state buffer
-    if "audio_chunks" not in meeting_state:
-        meeting_state["audio_chunks"] = []
-    meeting_state["audio_chunks"].append(audio_bytes)
+    state_manager.append(session_id, "audio_chunks", audio_bytes)
     
-    if "chunk_count" not in meeting_state:
-        meeting_state["chunk_count"] = 0
-    meeting_state["chunk_count"] += 1
+    # Reload state to get updated count
+    state = state_manager.get(session_id)
+    new_chunk_count = len(state["audio_chunks"])
+    state_manager.update(session_id, "chunk_count", new_chunk_count)
     
     real_text = ""
     # Transcribe sliding windows of 5 seconds to provide accurate context to Whisper
-    if meeting_state["chunk_count"] >= 5 and meeting_state["chunk_count"] % 5 == 0:
+    if new_chunk_count >= 5 and new_chunk_count % 5 == 0:
         try:
-            recent_audio = b"".join(meeting_state["audio_chunks"][-5:])
+            recent_audio = b"".join(state["audio_chunks"][-5:])
             real_text = transcribe_chunk(recent_audio)
+            if real_text is None:
+                return   # VAD detected silence — skip entirely, no Gemini call
         except Exception as te:
             print(f"Real-time transcribe_chunk failed: {te}", file=sys.stderr, flush=True)
             
     if real_text:
-        meeting_state["has_real_speech"] = True
-        elapsed_sec = int(time.time() - meeting_state.get("start_time", time.time()))
+        state_manager.update(session_id, "has_real_speech", True)
+        elapsed_sec = int(time.time() - state.get("start_time", time.time()))
         min_part = elapsed_sec // 60
         sec_part = elapsed_sec % 60
         timestamp = f"{min_part}:{sec_part:02d}"
         
         # 1. Run analyze_line + scan_for_jargon
-        analysis = gemini_client.analyze_line(real_text, speaker, meeting_state["industry"])
+        analysis = gemini_client.analyze_line(real_text, speaker, state["industry"])
         emotion = analysis.get("emotion", "Neutral")
         insight = analysis.get("insight", "")
         jargon_terms = analysis.get("jargon_terms", [])
         
         # Update meeting state
-        meeting_state["emotions"].append(emotion)
+        state_manager.append(session_id, "emotions", emotion)
         line_data = {
             "speaker": speaker,
             "text": real_text,
@@ -607,21 +714,25 @@ def handle_audio_chunk(data):
             "jargon_terms": jargon_terms,
             "real_speech": True
         }
-        meeting_state["transcript"].append(line_data)
+        state_manager.append(session_id, "transcript", line_data)
         
         # 2. Emits "transcript_line" event with full enriched line
         emit("transcript_line", line_data, room=session_id)
+        # Save to DB
+        db.save_transcript_line(session_id, line_data)
         # Compatible event for frontend
         emit("live_transcript", {"speaker": speaker, "text": real_text, "timestamp": timestamp}, room=session_id)
         
-        chart_emotions = get_emotions_chart_data(meeting_state["emotions"])
+        # Fetch fresh updated state
+        updated_state = state_manager.get(session_id)
+        chart_emotions = get_emotions_chart_data(updated_state["emotions"])
         emit("live_emotions", chart_emotions, room=session_id)
         
         # 3. Every 10 lines runs extract_topics
-        if len(meeting_state["transcript"]) % 10 == 0:
-            transcript_so_far = " ".join([f"{l['speaker']}: {l['text']}" for l in meeting_state["transcript"]])
+        if len(updated_state["transcript"]) % 10 == 0:
+            transcript_so_far = " ".join([f"{l['speaker']}: {l['text']}" for l in updated_state["transcript"]])
             raw_topics = gemini_client.extract_topics(transcript_so_far)
-            meeting_state["topics"] = raw_topics
+            state_manager.update(session_id, "topics", raw_topics)
             
             # Emits "topics_update" and "live_topics"
             emit("topics_update", raw_topics, room=session_id)
@@ -630,42 +741,46 @@ def handle_audio_chunk(data):
             
     else:
         # Fallback to visual mock demo stream if no speech is detected (keeps UI alive and interactive)
-        if meeting_state["chunk_count"] % 8 == 0 and not meeting_state.get("has_real_speech", False):
-            normalized_ind = meeting_state["industry"].lower().replace(" ", "_")
+        if new_chunk_count % 8 == 0 and not state.get("has_real_speech", False):
+            normalized_ind = state["industry"].lower().replace(" ", "_")
             mock_data = INDUSTRY_DATA.get(normalized_ind, INDUSTRY_DATA["manufacturing"])
             
             # Dialogue rotation index
-            dialogue_idx = (meeting_state["chunk_count"] // 8 - 1) % len(mock_data["dialogue"])
+            dialogue_idx = (new_chunk_count // 8 - 1) % len(mock_data["dialogue"])
             current_line = mock_data["dialogue"][dialogue_idx]
             
-            elapsed_sec = int(time.time() - meeting_state["start_time"])
+            elapsed_sec = int(time.time() - state["start_time"])
             min_part = elapsed_sec // 60
             sec_part = elapsed_sec % 60
             timestamp = f"{min_part}:{sec_part:02d}"
             
             # Run local jargon scanner to showcase knowledge base capability
-            jargon_matches = knowledge_base.scan_for_jargon(current_line["text"], meeting_state["industry"])
+            jargon_matches = knowledge_base.scan_for_jargon(current_line["text"], state["industry"])
             formatted_jargon = [{"term": j["term"], "plain_english": f"{j['full_form']}: {j['plain_english']}"} for j in jargon_matches]
             
             # Mock analyze line
             emotion = mock_data["emotions"][dialogue_idx % len(mock_data["emotions"])]
-            meeting_state["emotions"].append(emotion)
+            state_manager.append(session_id, "emotions", emotion)
             
             line_data = {
                 "speaker": current_line["speaker"],
                 "text": current_line["text"],
                 "timestamp": timestamp,
                 "emotion": emotion,
-                "insight": f"Important discussion regarding {meeting_state['industry']} operations.",
+                "insight": f"Important discussion regarding {state['industry']} operations.",
                 "jargon_terms": formatted_jargon,
                 "real_speech": False
             }
-            meeting_state["transcript"].append(line_data)
+            state_manager.append(session_id, "transcript", line_data)
             
             emit("transcript_line", line_data, room=session_id)
+            # Save to DB
+            db.save_transcript_line(session_id, line_data)
             emit("live_transcript", {"speaker": current_line["speaker"], "text": current_line["text"], "timestamp": timestamp}, room=session_id)
             
-            chart_emotions = get_emotions_chart_data(meeting_state["emotions"])
+            # Fetch fresh updated state
+            updated_state = state_manager.get(session_id)
+            chart_emotions = get_emotions_chart_data(updated_state["emotions"])
             emit("live_emotions", chart_emotions, room=session_id)
             
             # Periodic mock topic updates
@@ -678,8 +793,8 @@ def handle_audio_chunk(data):
                     "value": max(10, min(100, 75 + noise))
                 })
             
-            meeting_state["topics"] = [nt["text"] for nt in noisy_topics]
-            emit("topics_update", meeting_state["topics"], room=session_id)
+            state_manager.update(session_id, "topics", [nt["text"] for nt in noisy_topics])
+            emit("topics_update", [nt["text"] for nt in noisy_topics], room=session_id)
             emit("live_topics", noisy_topics, room=session_id)
 
 

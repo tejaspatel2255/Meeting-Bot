@@ -32,29 +32,29 @@ def run_checklist():
     hf_token = os.getenv("HF_TOKEN") or Config.HF_TOKEN
     
     if gemini_key:
-        print("  [✓] Gemini API Key: Configured")
+        print("  [OK] Gemini API Key: Configured")
     else:
         print("  [!] Gemini API Key: MISSING (Fallback options will be limited)")
         
     if groq_key:
-        print("  [✓] Groq API Key: Configured (Primary LLM ready)")
+        print("  [OK] Groq API Key: Configured (Primary LLM ready)")
     else:
         print("  [!] Groq API Key: MISSING (VibeNote will default to Gemini for analysis)")
         
     if hf_token:
-        print("  [✓] Hugging Face Token: Configured (Diarization pipeline ready)")
+        print("  [OK] Hugging Face Token: Configured (Diarization pipeline ready)")
     else:
         print("  [!] Hugging Face Token: MISSING (Diarization model authorization might fail)")
 
     # 2. Industry Knowledge Base
     if len(knowledge_base.JARGON_DB) >= 3:
-        print("  [✓] Industry Jargon Database: Loaded (Manufacturing, Construction, Financial Services)")
+        print("  [OK] Industry Jargon Database: Loaded (Manufacturing, Construction, Financial Services)")
     else:
         print("  [!] Industry Jargon Database: Verification failed")
 
     # 3. Port & Debug Configurations
-    print(f"  [✓] Host Binding: 0.0.0.0:{Config.PORT}")
-    print(f"  [✓] Debug Mode: {Config.DEBUG}")
+    print(f"  [OK] Host Binding: 0.0.0.0:{Config.PORT}")
+    print(f"  [OK] Debug Mode: {Config.DEBUG}")
     print("="*50 + "\n")
 
 if __name__ == "__main__":

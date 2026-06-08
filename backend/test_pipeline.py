@@ -40,7 +40,7 @@ def test_transcribe_chunk():
     # Transcribe chunk
     result = transcribe_chunk(wav_bytes)
     print(f"    Transcribe output: '{result}'")
-    assert isinstance(result, str), "transcribe_chunk must return a string"
+    assert result is None or isinstance(result, str), "transcribe_chunk must return a string or None"
 
 def test_analyze_line():
     text = "We need to calculate the OEE of our assembly line to identify bottlenecks."
